@@ -1,0 +1,37 @@
+services:
+  rustfs:
+    image: rustfs/rustfs:latest
+    container_name: fathom-rustfs
+    command: ["server", "--address", ":9000", "--console-address", ":9001", "/data"]
+    environment:
+      RUSTFS_ROOT_USER: fathom
+      RUSTFS_ROOT_PASSWORD: fathom-dev-password
+    volumes:
+      - rustfs-data:/data
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Console
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  sail:
+    image: ghcr.io/lakehq/sail:latest
+    container_name: fathom-sail
+    command: ["sail", "spark", "server", "--port", "50051"]
+    ports:
+      - "50051:50051"   # Spark Connect
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    environment:
+      AWS_ACCESS_KEY_ID: fathom
+      AWS_SECRET_ACCESS_KEY: fathom-dev-password
+      AWS_ENDPOINT_URL: http://rustfs:9000
+      AWS_ALLOW_HTTP: "true"
+      AWS_REGION: us-east-1
+
+volumes:
+  rustfs-data:

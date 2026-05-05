@@ -1,0 +1,35 @@
+[package]
+name = "fathom-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Fathom CLI — assemble formations and run convergence over filings."
+
+[[bin]]
+name = "fathom"
+path = "src/main.rs"
+
+[dependencies]
+fathom-core.workspace = true
+fathom-ingest.workspace = true
+fathom-suggestors.workspace = true
+
+# Converge runtime + storage
+converge-kernel.workspace = true
+converge-runtime.workspace = true
+converge-storage.workspace = true
+
+# Organism — formation assembly
+organism-intent.workspace = true
+organism-planning.workspace = true
+organism-runtime.workspace = true
+organism-pack.workspace = true
+
+# CLI plumbing
+clap.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

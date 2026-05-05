@@ -1,0 +1,37 @@
+[package]
+name = "fathom-suggestors"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Converge suggestors that query Fathom's Iceberg lakehouse and propose facts."
+
+[dependencies]
+fathom-core.workspace = true
+
+# Converge contracts
+converge-kernel.workspace = true
+converge-model.workspace = true
+converge-pack.workspace = true
+
+# Prism analytic packs
+prism.workspace = true
+
+# Lakehouse query
+datafusion.workspace = true
+arrow.workspace = true
+iceberg.workspace = true
+iceberg-datafusion.workspace = true
+
+# Burn for inference
+burn.workspace = true
+ndarray.workspace = true
+polars.workspace = true
+
+# Async + utilities
+tokio.workspace = true
+async-trait.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+tracing.workspace = true

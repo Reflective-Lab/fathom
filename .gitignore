@@ -1,0 +1,8 @@
+/target
+/data
+/.fathom
+**/*.rs.bk
+.DS_Store
+.env
+.env.local
+*.log
