@@ -34,20 +34,34 @@ converge-storage  = "3.8.1"
 # on core directly when authoring invariants.
 converge-core     = "3.8.1"
 
-# Converge extensions — git deps because the matching crates.io names are
-# already taken by unrelated projects. The Reflective-Lab packages were
-# renamed `converge-{name}-{purpose}` on github main precisely to dodge the
-# crates.io collision; the *lib* names (used in `use` statements) stay short.
-prism = { package = "converge-prism-analytics",  git = "https://github.com/Reflective-Lab/prism",         branch = "main" }
-arbiter = { package = "converge-arbiter-policy", git = "https://github.com/Reflective-Lab/arbiter-policy", branch = "main" }
+# Reflective-Lab Converge extensions.
+#
+# Naming convention: every published Reflective-Lab extension crate is
+# prefixed `converge-{ext}-{purpose}` on crates.io to dodge the collisions
+# (`prism`, `arbiter`, `arbiter-policy`, `ferrox` etc. are all taken by
+# unrelated projects). The *lib* names (used in `use` statements) stay
+# short — see each extension's [lib] section. The cargo `package = "..."`
+# spelling here is the published-crate name; the bareword on the left
+# (`prism`, `arbiter`) is the import name we use in Rust source.
+#
+# Currently git-dep'd against the Reflective-Lab github main branch because
+# the converge-* prefixed names are not yet on crates.io. When they publish,
+# each entry collapses to e.g. `prism = "1.0"`.
+prism   = { package = "converge-prism-analytics",  git = "https://github.com/Reflective-Lab/prism",          branch = "main" }
+arbiter = { package = "converge-arbiter-policy",   git = "https://github.com/Reflective-Lab/arbiter-policy", branch = "main" }
 
 # Constraint solvers (CP-SAT, MIP) as Converge suggestors. Earns its keep
-# at portfolio scope (1.7.0+); declared in the catalogue so it's visible.
-ferrox = "0.1"
+# at portfolio scope (1.7.0+); not yet pulled into any crate's build graph.
+# Published name will be `converge-ferrox-solver` (Cargo.toml will get a
+# `package = "..."` line then). For now we hold the catalogue entry as a
+# git dep against the Reflective-Lab repo so anyone re-enabling this
+# resolves to the right crate, not the unrelated `ferrox 0.1` on crates.io.
+ferrox = { package = "converge-ferrox-solver", git = "https://github.com/Reflective-Lab/ferrox-solvers", branch = "main" }
 
-# Organism — formation assembly. Held at 1.4.0 (compatible with converge 3.7.x);
-# this catalogue entry is unused by any crate today and will get bumped when
-# Organism publishes a 3.8.1-compatible release for the formation slice.
+# Organism — formation assembly. Held at 1.4.0 in the catalogue (the
+# published 3.7.x-compatible version); not pulled into any crate today.
+# Organism 1.5.0 (Converge 3.8.1-compatible) is announced but not on
+# crates.io yet — bump when the formation slice (2.0.0) lands.
 organism-intent    = "1.4.0"
 organism-planning  = "1.4.0"
 organism-runtime   = "1.4.0"
