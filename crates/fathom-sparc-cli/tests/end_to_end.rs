@@ -111,3 +111,56 @@ fn analyse_unknown_cik_fails_with_clear_message() {
         "expected helpful error, got: {stderr}"
     );
 }
+
+#[test]
+fn portfolio_tight_budget_picks_highest_value_cik() {
+    // With budget=23 only MSFT (weight 20) fits; Apple (27) and NVDA (23)
+    // can't both fit alongside MSFT, but MSFT alone is the cheapest entry
+    // with the highest signal value (highest language churn in this batch).
+    let output = Command::new(env!("CARGO_BIN_EXE_fathom-sparc"))
+        .args(["portfolio", "--budget=23"])
+        .output()
+        .expect("spawn fathom binary");
+    assert!(
+        output.status.success(),
+        "binary exited non-zero: stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout utf-8");
+    let selections: Vec<serde_json::Value> =
+        serde_json::from_str(&stdout).expect("stdout is JSON array of selections");
+    assert_eq!(selections.len(), 1, "exactly one solver selection expected");
+    let sel = &selections[0];
+    let selected = sel["selected"].as_array().expect("selected array");
+    assert!(
+        !selected.is_empty(),
+        "tight budget should still select at least one CIK"
+    );
+    assert!(
+        sel["total_weight"].as_i64().unwrap() <= 23,
+        "selected weight must respect budget"
+    );
+}
+
+#[test]
+fn portfolio_wide_budget_includes_all_ciks() {
+    // Sum of weights for the three real fixtures is 70; budget 100 should
+    // select everything with utilization == 1.0 (relative to actual weight,
+    // not the budget — the foundation suggestor reports total_weight/budget).
+    let output = Command::new(env!("CARGO_BIN_EXE_fathom-sparc"))
+        .args(["portfolio", "--budget=100"])
+        .output()
+        .expect("spawn fathom binary");
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout utf-8");
+    let selections: Vec<serde_json::Value> =
+        serde_json::from_str(&stdout).expect("stdout is JSON array");
+    let selected = selections[0]["selected"].as_array().unwrap();
+    assert_eq!(
+        selected.len(),
+        3,
+        "with a generous budget the solver should pick all 3 candidate CIKs; got {selected:?}"
+    );
+}

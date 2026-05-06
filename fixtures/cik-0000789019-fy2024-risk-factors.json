@@ -1,0 +1,34 @@
+{
+  "filing": {
+    "cik": "0000789019",
+    "form": "10-K",
+    "fiscal_year": 2024
+  },
+  "risk_factors": [
+    "We face intense competition across all markets for our products and services, which may adversely affect our results of operations.",
+    "Our focus on cloud-based and AI services presents execution and competitive risks.",
+    "We make significant investments in products and services that may not achieve expected returns.",
+    "Acquisitions, joint ventures, and strategic alliances may have an adverse effect on our business.",
+    "If our goodwill or amortizable intangible assets become impaired, we may be required to record a significant charge to earnings.",
+    "Cyberattacks and security vulnerabilities could lead to reduced revenue, increased costs, liability claims, or harm to our reputation or competitive position.",
+    "Disclosure and misuse of personal data could result in liability and harm our reputation.",
+    "Abuse of our platforms may harm our reputation or user engagement.",
+    "Our products and services, how they are used by customers, and how third-party products and services interact with them, may present security, privacy, and execution risks.",
+    "We may have excessive outages, data losses, and disruptions of our online services if we fail to maintain an adequate operations infrastructure.",
+    "We may experience quality or supply problems.",
+    "Government enforcement under competition laws and new market regulation may limit how we design and market our products.",
+    "Laws and regulations relating to anti-corruption and trade could result in increased costs, fines, criminal penalties, or reputational damage.",
+    "Laws and regulations relating to the handling of personal data may impede the adoption of our services or result in increased costs, legal claims, fines against us, or reputational damage.",
+    "Existing and increasing legal and regulatory requirements could adversely affect our results of operations.",
+    "We have claims and lawsuits against us that may result in adverse outcomes.",
+    "Our business with government customers may present additional uncertainties.",
+    "We may have additional tax liabilities.",
+    "We are subject to evolving sustainability regulatory requirements and expectations, which exposes us to increased costs and legal and reputational risks.",
+    "We face risks related to the protection and utilization of our intellectual property that may result in our business and operating results being harmed.",
+    "Third parties may claim that we infringe their intellectual property.",
+    "Adverse economic or market conditions may harm our business.",
+    "Catastrophic events or geopolitical conditions may disrupt our business.",
+    "Our global business exposes us to operational and economic risks.",
+    "Our business depends on our ability to attract and retain talented employees."
+  ]
+}

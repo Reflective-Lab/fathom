@@ -12,10 +12,12 @@ fathom-sparc-core.workspace = true
 
 # Converge contracts — pack for the Suggestor trait + Context, kernel for
 # the Invariant trait (re-exported from converge_core), core for `Violation`
-# (the only invariant type the kernel doesn't re-export).
+# (the only invariant type the kernel doesn't re-export), optimization for
+# the PortfolioRequest/PortfolioItem types our seed suggestor emits.
 converge-pack.workspace = true
 converge-kernel.workspace = true
 converge-core.workspace = true
+converge-optimization.workspace = true
 
 # Async + utilities
 async-trait.workspace = true

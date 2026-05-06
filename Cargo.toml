@@ -33,6 +33,12 @@ converge-storage  = "3.8.1"
 # type used by custom invariants is not in the re-export list, so we depend
 # on core directly when authoring invariants.
 converge-core     = "3.8.1"
+# converge-optimization ships the foundation's pure-Rust solvers — 0-1 Knapsack
+# DP, Dijkstra — and the PortfolioSuggestor that wraps Knapsack as a Converge
+# Suggestor. Used in the portfolio coverage slice (1.7.0) as the always-on
+# solver path; Ferrox HighsMipSuggestor is the optional native-build
+# alternative (engine merges by confidence when both are registered).
+converge-optimization = "3.8.1"
 
 # Reflective-Lab Converge extensions.
 #
@@ -50,8 +56,20 @@ converge-core     = "3.8.1"
 prism   = { package = "converge-prism-analytics",  git = "https://github.com/Reflective-Lab/prism",          branch = "main" }
 arbiter = { package = "converge-arbiter-policy",   git = "https://github.com/Reflective-Lab/arbiter-policy", branch = "main" }
 
-# Constraint solvers (CP-SAT, MIP) as Converge suggestors. Earns its keep
-# at portfolio scope (1.7.0+); not yet pulled into any crate's build graph.
+# Constraint solvers (CP-SAT, MIP) as Converge suggestors. Ferrox earns its
+# keep at portfolio scope (1.7.0+) through provable optimality; not yet pulled
+# into any crate's build graph.
+#
+# CP-SAT and MIP require native builds from the sibling Ferrox checkout:
+#   cd ~/dev/extensions/ferrox-solvers && make ortools
+#   cd ~/dev/extensions/ferrox-solvers && make highs
+# Fathom's .cargo/config.toml points FERROX_ORTOOLS_ROOT and FERROX_HIGHS_ROOT
+# at those builds for the standard local checkout layout. CI and contributors
+# using another layout must set those variables to their native build
+# directories.
+#
+# First-time clone cost: expect a 15-30 minute C++ compile before native
+# Ferrox checks can run.
 # Published name will be `converge-ferrox-solver` (Cargo.toml will get a
 # `package = "..."` line then). For now we hold the catalogue entry as a
 # git dep against the Reflective-Lab repo so anyone re-enabling this

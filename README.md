@@ -236,6 +236,39 @@ RustFS replaces MinIO as the local S3 endpoint. Sail is wired to it with
 locally are byte-compatible with the same tables on AWS S3 — moving from
 laptop to cloud is configuration, not code.
 
+### Native Solver Setup
+
+Ferrox earns its keep at portfolio scope: it gives the formation provable
+optimality for constrained coverage decisions instead of a plausible ranking.
+That comes with a real native setup cost. The first clone that enables native
+Ferrox solvers should expect a 15-30 minute C++ build before those checks can
+run.
+
+Build OR-Tools and HiGHS once in the sibling Ferrox checkout:
+
+```bash
+cd ~/dev/extensions/ferrox-solvers
+make ortools
+make highs
+```
+
+Fathom sets `FERROX_ORTOOLS_ROOT` and `FERROX_HIGHS_ROOT` for Cargo through
+`.cargo/config.toml` using the standard local checkout layout:
+
+```text
+~/dev/apps/fathom-sparc
+~/dev/extensions/ferrox-solvers/vendor/ortools/build
+~/dev/extensions/ferrox-solvers/vendor/highs/build
+```
+
+CI and contributors with a different layout need the same environment
+variables:
+
+```bash
+export FERROX_ORTOOLS_ROOT=/path/to/ferrox-solvers/vendor/ortools/build
+export FERROX_HIGHS_ROOT=/path/to/ferrox-solvers/vendor/highs/build
+```
+
 ---
 
 ## Status
@@ -403,18 +436,72 @@ INFO  fathom_sparc: engine finished cycles=2 converged=true gated=1
 Tests: 22 passing (5 drift unit + 6 language unit + 7 invariant unit + 2
 ingest + 2 binary integration).
 
+**1.7.0 — PortfolioCoverageFormation, foundation knapsack path (shipped).**
+Multi-CIK fixtures (Apple FY24/FY25, Microsoft FY24/FY25, NVIDIA FY25/FY26,
+all extracted from real SEC EDGAR 10-Ks) plus a four-suggestor formation:
+
+```
+ContextKey::Signals          ← seeded RiskFactorSection fixtures
+        ↓
+RiskFactorDriftSuggestor      ┐
+RiskFactorLanguageSuggestor   ┤ → ContextKey::Proposals
+                              │
+PortfolioCoverageSeedSuggestor┘ → ContextKey::Seeds   (portfolio-request:…)
+        ↓
+PortfolioSuggestor            → ContextKey::Strategies (portfolio-selection:…)
+   (converge-optimization, foundation pure-Rust 0-1 knapsack DP)
+```
+
+`PortfolioCoverageSeedSuggestor` reads the promoted drift+language facts
+per CIK and emits a `PortfolioRequest` (item per CIK with both signals;
+`weight = current_count`, `value = round((1 - jaccard) × 100)`). The
+foundation `PortfolioSuggestor` from `converge-optimization` solves the
+0-1 knapsack with provable optimality.
+
+```text
+$ fathom-sparc portfolio --budget=50
+[
+  {
+    "request_id": "fathom-sparc:portfolio:risk-coverage",
+    "selected": ["0000320193::FY2025", "0000789019::FY2025"],
+    "total_value": 93,
+    "total_weight": 47,
+    "utilization": 0.94
+  }
+]
+```
+
+Apple + MSFT picked (47/50 budget), NVIDIA dropped — NVIDIA's language was
+more stable (higher Jaccard → lower analytical value-per-unit-weight).
+Tighter budgets pick the highest-value singleton; budget ≥ 70 picks all
+three. The decision is *deterministic* and *provably optimal* (DP).
+
+**Ferrox second path (in flight).** The same `PortfolioRequest` shape is
+exactly what `ferrox::HighsMipSuggestor` consumes when it's wired (one
+extra `engine.register_suggestor(HighsMipSuggestor)` line), and both
+solvers compete on the same Strategies key — the engine merges by
+confidence. Native HiGHS/OR-Tools build via the sibling
+`ferrox-solvers` checkout (`make highs && make ortools`); the
+`.cargo/config.toml` already points `FERROX_HIGHS_ROOT` and
+`FERROX_ORTOOLS_ROOT` at the standard layout. Adding the suggestor
+arrives in 1.7.1 once the native build completes.
+
+Tests: 28 passing (22 unit including 4 portfolio_seed unit + 2 ingest +
+4 binary integration including 2 portfolio).
+
 **Next slices.**
 
 1. **HF + SEC EDGAR ingest (1.6.0).** `hf-hub` to download a slice of
    `JanosAudran/financial-reports-sec`; Rust port of the python heading
    extractor for live SEC EDGAR filings. Both produce
    `RiskFactorSection`s; downstream (engine, suggestors, invariant,
-   gates) is unchanged.
-2. **PortfolioCoverageFormation with Ferrox (1.7.0).** Multi-CIK fixtures
-   plus a Ferrox CP-SAT or HiGHS solver picking which N CIKs to deep-review
-   under an analyst-hour budget. This is the slice where the *constraint
-   solver* extension earns its keep — single-CIK demos can't make use of
-   it.
-3. **Organism formation (2.0.0).** Assemble drift + language + future
-   suggestors into `DisclosureRiskFormation`. Run across a portfolio for
-   a screen-style output. Where Organism earns its keep.
+   gates, portfolio formation) is unchanged.
+2. **Ferrox HighsMipSuggestor wired (1.7.1).** Native HiGHS build done,
+   second knapsack solver registered. Both `PortfolioSelection`
+   (foundation DP) and `MipPlan` (Ferrox HiGHS) appear in `Strategies`,
+   engine merges them by confidence. The Engine merge order is the demo
+   that "two solvers compete cleanly" works end-to-end.
+3. **Organism formation (2.0.0).** Assemble drift + language + portfolio
+   suggestors into `DisclosureRiskFormation` /
+   `PortfolioCoverageFormation`. Run across larger portfolios for a
+   screen-style output. Where Organism earns its keep.

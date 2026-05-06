@@ -26,11 +26,13 @@ use converge_core::{AuthorityLevel, FlowAction, FlowPhase};
 use converge_kernel::{
     ContextState, Engine, EngineHitlPolicy, GateDecision, RunResult, TimeoutPolicy,
 };
+use converge_optimization::suggestors::portfolio::{PortfolioSelection, PortfolioSuggestor};
 use converge_pack::{ContextFact, ContextKey};
 use fathom_sparc_core::{Cik, RiskFactorSection};
 use fathom_sparc_ingest::load_risk_factor_fixture;
 use fathom_sparc_suggestors::{
-    RiskFactorDriftSuggestor, RiskFactorLanguageSuggestor, RiskFactorMassConservationInvariant,
+    PortfolioCoverageSeedSuggestor, RiskFactorDriftSuggestor, RiskFactorLanguageSuggestor,
+    RiskFactorMassConservationInvariant,
 };
 
 /// Confidence floor — proposals at or below this trigger a HITL pause.
@@ -70,6 +72,19 @@ enum Command {
         #[arg(long, default_value = FIXTURES_DIR)]
         fixtures: PathBuf,
     },
+    /// Solve "which CIKs should we deep-review this period under our
+    /// analyst-time budget?" as a 0-1 knapsack. Loads every fixture, runs
+    /// drift + language + portfolio_seed + PortfolioSuggestor, prints the
+    /// selected portfolio.
+    Portfolio {
+        /// Analyst-reading budget, in risk-factor-equivalents (each
+        /// disclosed Item 1A factor counts as one unit).
+        #[arg(long, default_value_t = 50)]
+        budget: i64,
+        /// Override the fixtures directory.
+        #[arg(long, default_value = FIXTURES_DIR)]
+        fixtures: PathBuf,
+    },
 }
 
 #[tokio::main]
@@ -84,6 +99,7 @@ async fn main() -> anyhow::Result<()> {
             Ok(())
         }
         Command::Analyse { cik, fixtures } => analyse(Cik::new(cik), &fixtures).await,
+        Command::Portfolio { budget, fixtures } => portfolio(budget, &fixtures).await,
     }
 }
 
@@ -171,6 +187,122 @@ async fn analyse(cik: Cik, fixtures_dir: &std::path::Path) -> anyhow::Result<()>
     let view: Vec<FactView<'_>> = promoted.iter().map(FactView::from).collect();
     println!("{}", serde_json::to_string_pretty(&view)?);
     Ok(())
+}
+
+/// Portfolio coverage formation: load every fixture, register the per-CIK
+/// drift suggestors plus the portfolio_seed → PortfolioSuggestor chain,
+/// converge, print the selected portfolio + its rationale.
+async fn portfolio(budget: i64, fixtures_dir: &std::path::Path) -> anyhow::Result<()> {
+    let sections = load_all_sections(fixtures_dir)?;
+    if sections.is_empty() {
+        bail!("no fixtures found under {}", fixtures_dir.display());
+    }
+    let cik_count = sections
+        .iter()
+        .map(|s| s.filing.cik.as_str())
+        .collect::<std::collections::HashSet<_>>()
+        .len();
+    tracing::info!(
+        sections = sections.len(),
+        cik_count,
+        budget,
+        "loaded fixtures for portfolio formation"
+    );
+
+    let mut context = seed_context(&sections)?;
+    // Override the placeholder budget the seed suggestor will write. The
+    // PortfolioSuggestor reads `portfolio-budget:fathom-sparc:portfolio:risk-coverage`
+    // implicitly via the request body's budget field, so we pre-seed a
+    // *budget directive* fact under Constraints that the seed suggestor
+    // honours when it builds the request.
+    context
+        .add_input_with_provenance(
+            ContextKey::Constraints,
+            "portfolio-budget:risk-coverage",
+            budget.to_string(),
+            "fathom-sparc:cli",
+        )
+        .map_err(|e| anyhow::anyhow!("failed to seed budget: {e:?}"))?;
+
+    let mut engine = Engine::new();
+    engine.register_suggestor(RiskFactorDriftSuggestor::new());
+    engine.register_suggestor(RiskFactorLanguageSuggestor::new());
+    engine.register_suggestor(PortfolioCoverageSeedSuggestor::new());
+    engine.register_suggestor(PortfolioSuggestor);
+    engine.register_invariant(RiskFactorMassConservationInvariant);
+    engine.set_hitl_policy(EngineHitlPolicy {
+        confidence_threshold: Some(HITL_CONFIDENCE_THRESHOLD),
+        gated_keys: Vec::new(),
+        timeout: TimeoutPolicy::default(),
+    });
+
+    let mut step = engine.run_with_hitl(context).await;
+    let mut gated = 0usize;
+    let result = loop {
+        match step {
+            RunResult::Complete(r) => {
+                break r.map_err(|e| anyhow::anyhow!("engine run failed: {e:?}"))?;
+            }
+            RunResult::HitlPause(pause) => {
+                gated += 1;
+                let gate_id = pause.request.gate_id.clone();
+                tracing::warn!(%gate_id, cycle = pause.cycle, "auto-approving HITL gate");
+                let decision = GateDecision::approve(gate_id, "fathom-sparc:auto-approver");
+                step = engine.resume(*pause, decision).await;
+            }
+        }
+    };
+
+    tracing::info!(
+        cycles = result.cycles,
+        converged = result.converged,
+        stop_reason = ?result.stop_reason,
+        gated,
+        "portfolio engine finished"
+    );
+
+    let strategies = result.context.get(ContextKey::Strategies);
+    let selections: Vec<PortfolioSelection> = strategies
+        .iter()
+        .filter(|f| f.id().as_str().starts_with("portfolio-selection:"))
+        .filter_map(|f| serde_json::from_str(f.content()).ok())
+        .collect();
+
+    if selections.is_empty() {
+        println!("no portfolio selection promoted; check that drift+language suggestors fired");
+        return Ok(());
+    }
+
+    // When PortfolioSuggestor + Ferrox HighsMipSuggestor both run, multiple
+    // selections appear here — print all so the formation pattern is visible.
+    println!("{}", serde_json::to_string_pretty(&selections)?);
+    Ok(())
+}
+
+fn load_all_sections(
+    fixtures_dir: &std::path::Path,
+) -> anyhow::Result<Vec<RiskFactorSection>> {
+    let mut out = Vec::new();
+    let entries = fs::read_dir(fixtures_dir)
+        .with_context(|| format!("reading fixtures dir {}", fixtures_dir.display()))?;
+    for entry in entries {
+        let path = entry?.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("json") {
+            continue;
+        }
+        match load_risk_factor_fixture(&path) {
+            Ok(s) => out.push(s),
+            Err(err) => tracing::warn!(?path, error = %err, "skipping unreadable fixture"),
+        }
+    }
+    out.sort_by(|a, b| {
+        a.filing
+            .cik
+            .as_str()
+            .cmp(b.filing.cik.as_str())
+            .then(a.filing.fiscal_year.cmp(&b.filing.fiscal_year))
+    });
+    Ok(out)
 }
 
 fn load_sections_for_cik(

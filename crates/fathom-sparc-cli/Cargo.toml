@@ -23,6 +23,9 @@ converge-pack.workspace = true
 # converge-core for FlowAction + AuthorityLevel + FlowPhase used to construct
 # the arbiter DecideRequest at the CLI boundary.
 converge-core.workspace = true
+# converge-optimization for PortfolioSuggestor (foundation pure-Rust knapsack
+# DP) and the PortfolioRequest/PortfolioSelection types we materialise.
+converge-optimization.workspace = true
 
 # arbiter — Cedar policy preflight (the *front* gate of the gate taxonomy).
 arbiter.workspace = true

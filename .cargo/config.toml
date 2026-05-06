@@ -1,0 +1,3 @@
+[env]
+FERROX_ORTOOLS_ROOT = { value = "../../extensions/ferrox-solvers/vendor/ortools/build", relative = true }
+FERROX_HIGHS_ROOT = { value = "../../extensions/ferrox-solvers/vendor/highs/build", relative = true }
