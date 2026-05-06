@@ -20,13 +20,28 @@ fn engine_promotes_both_drift_facts_for_apple_fy24_to_fy25() {
         String::from_utf8_lossy(&output.stderr)
     );
 
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    // The language suggestor's confidence == Jaccard similarity. Apple's
+    // FY24→FY25 language drift has Jaccard ≈ 0.618, well below the 0.7
+    // HITL threshold the CLI configures, so exactly one gate must fire and
+    // be auto-approved before the engine completes.
+    assert!(
+        stderr.contains("HITL gate(s) auto-approved"),
+        "expected HITL pause + auto-approve in stderr; got: {stderr}"
+    );
+    assert!(
+        stderr.contains("risk_factor_language::0000320193::2025"),
+        "HITL gate should reference the language drift proposal; got: {stderr}"
+    );
+
     let stdout = String::from_utf8(output.stdout).expect("stdout utf-8");
     let facts: Vec<serde_json::Value> =
         serde_json::from_str(&stdout).expect("stdout is JSON array");
     assert_eq!(facts.len(), 2, "expected two promoted facts");
 
     // Every fact must carry the engine as the promoting actor — that's the
-    // real proof the convergence loop ran, rather than a hand-rolled context.
+    // real proof the convergence loop ran (and that the invariant accepted
+    // the result), rather than a hand-rolled context.
     for f in &facts {
         let promoted_by = f["promoted_by"].as_str().expect("promoted_by");
         assert!(

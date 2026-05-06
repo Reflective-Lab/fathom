@@ -86,8 +86,16 @@ impl Suggestor for RiskFactorLanguageSuggestor {
                     drift.current.cik.as_str(),
                     drift.current.fiscal_year
                 );
+                // Confidence == Jaccard. When language is highly stable
+                // (Jaccard near 1.0) the analytical interpretation is
+                // straightforward; when the issuer rewrote half the section
+                // (Jaccard < 0.7) the suggestor honestly reports lower
+                // confidence so the engine's HITL policy can pause for
+                // human review.
+                let confidence = drift.jaccard_similarity;
                 let content = serde_json::to_string(&drift).unwrap_or_default();
                 ProposedFact::new(ContextKey::Proposals, id, content, PROVENANCE)
+                    .with_confidence(confidence)
             })
             .collect();
         AgentEffect::with_proposals(proposals)

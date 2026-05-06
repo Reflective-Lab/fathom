@@ -17,11 +17,21 @@ use std::path::PathBuf;
 
 use anyhow::{Context as _, bail};
 use clap::{Parser, Subcommand};
-use converge_kernel::{ContextState, Engine};
+use converge_kernel::{
+    ContextState, Engine, EngineHitlPolicy, GateDecision, RunResult, TimeoutPolicy,
+};
 use converge_pack::{ContextKey, Fact};
 use fathom_sparc_core::{Cik, RiskFactorSection};
 use fathom_sparc_ingest::load_risk_factor_fixture;
-use fathom_sparc_suggestors::{RiskFactorDriftSuggestor, RiskFactorLanguageSuggestor};
+use fathom_sparc_suggestors::{
+    RiskFactorDriftSuggestor, RiskFactorLanguageSuggestor, RiskFactorMassConservationInvariant,
+};
+
+/// Confidence floor — proposals at or below this trigger a HITL pause.
+/// `RiskFactorLanguageSuggestor` sets confidence = Jaccard similarity, so
+/// any consecutive-year pair with substantial language churn (Jaccard ≤ 0.7)
+/// requires explicit approval before promotion.
+const HITL_CONFIDENCE_THRESHOLD: f64 = 0.7;
 
 const FIXTURES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures");
 
@@ -86,18 +96,56 @@ async fn analyse(cik: Cik, fixtures_dir: &std::path::Path) -> anyhow::Result<()>
     let mut engine = Engine::new();
     engine.register_suggestor(RiskFactorDriftSuggestor::new());
     engine.register_suggestor(RiskFactorLanguageSuggestor::new());
+    engine.register_invariant(RiskFactorMassConservationInvariant);
+    engine.set_hitl_policy(EngineHitlPolicy {
+        confidence_threshold: Some(HITL_CONFIDENCE_THRESHOLD),
+        gated_keys: Vec::new(),
+        timeout: TimeoutPolicy::default(),
+    });
 
-    let result = engine
-        .run(context)
-        .await
-        .map_err(|e| anyhow::anyhow!("engine run failed: {e:?}"))?;
+    let mut gated: Vec<String> = Vec::new();
+    let mut step = engine.run_with_hitl(context).await;
+    let result = loop {
+        match step {
+            RunResult::Complete(r) => {
+                break r.map_err(|e| anyhow::anyhow!("engine run failed: {e:?}"))?;
+            }
+            RunResult::HitlPause(pause) => {
+                let summary = pause.request.summary.clone();
+                let gate_id = pause.request.gate_id.clone();
+                gated.push(format!(
+                    "gate={gate_id} cycle={cycle} summary={summary:?}",
+                    cycle = pause.cycle
+                ));
+                tracing::warn!(
+                    %gate_id,
+                    cycle = pause.cycle,
+                    summary = %summary,
+                    "auto-approving HITL gate (confidence ≤ {HITL_CONFIDENCE_THRESHOLD}); \
+                     interactive review path lands when there's a UI to host it"
+                );
+                let decision = GateDecision::approve(gate_id, "fathom-sparc:auto-approver");
+                step = engine.resume(*pause, decision).await;
+            }
+        }
+    };
 
     tracing::info!(
         cycles = result.cycles,
         converged = result.converged,
         stop_reason = ?result.stop_reason,
+        gated = gated.len(),
         "engine finished"
     );
+    if !gated.is_empty() {
+        eprintln!(
+            "INFO: {} HITL gate(s) auto-approved during this run:",
+            gated.len()
+        );
+        for g in &gated {
+            eprintln!("  - {g}");
+        }
+    }
 
     let promoted = result.context.get(ContextKey::Proposals);
     if promoted.is_empty() {

@@ -10,14 +10,23 @@ description = "Converge suggestors for Fathom — SPARC: query the lakehouse, pr
 [dependencies]
 fathom-sparc-core.workspace = true
 
-# Converge contracts
+# Converge contracts — pack for the Suggestor trait + Context, kernel for
+# the Invariant trait (re-exported from converge_core), core for `Violation`
+# (the only invariant type the kernel doesn't re-export).
 converge-pack.workspace = true
+converge-kernel.workspace = true
+converge-core.workspace = true
 
 # Async + utilities
 async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+# Tests for invariants need to construct Fact instances via the
+# kernel-authority API.
+converge-pack = { workspace = true, features = ["kernel-authority"] }
 
 # NOTE: lakehouse (datafusion/arrow/iceberg/iceberg-datafusion), ML (burn,
 # ndarray, polars), and Prism are declared in `workspace.dependencies` and

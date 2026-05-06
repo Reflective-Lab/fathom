@@ -494,6 +494,8 @@ name = "fathom-sparc-suggestors"
 version = "1.0.0"
 dependencies = [
  "async-trait",
+ "converge-core",
+ "converge-kernel",
  "converge-pack",
  "fathom-sparc-core",
  "serde",

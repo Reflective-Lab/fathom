@@ -28,6 +28,10 @@ converge-kernel   = "3.7.6"
 converge-model    = "3.7.6"
 converge-pack     = "3.7.6"
 converge-storage  = "3.7.6"
+# converge-core is re-exported partially through converge-kernel; the Violation
+# type used by custom invariants is not in the re-export list, so we depend
+# on core directly when authoring invariants.
+converge-core     = "3.7.6"
 
 # Converge extension — git dep (the `prism` name on crates.io belongs to an
 # unrelated chart library; pin via git until/unless it's republished as

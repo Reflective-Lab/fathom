@@ -311,20 +311,43 @@ The output now reflects that:
 couldn't supply that string. The suggestor that proposed the fact is encoded
 in the id prefix (`risk_factor_drift::…` vs `risk_factor_language::…`).
 
+**1.4.0 — HITL gate + structural invariant (shipped).** The engine now
+exercises its governance machinery, not just its scheduling.
+
+- **Confidence-driven HITL.** `RiskFactorLanguageSuggestor` now sets
+  `with_confidence(jaccard)` on each proposal. The CLI configures
+  `EngineHitlPolicy { confidence_threshold: Some(0.7) }`. When Apple's
+  FY24→FY25 language drift fires (Jaccard 0.618), the engine pauses,
+  the CLI auto-approves with provenance `fathom-sparc:auto-approver`,
+  and the engine resumes. In a production setup the auto-approve loop
+  becomes a real prompt or an escalation to Slack/email.
+- **`RiskFactorMassConservationInvariant`.** Mathematical identity:
+  `added.len() - removed.len() == count.delta` for any `(CIK, fiscal_year)`
+  where both suggestors emitted facts. Acceptance class — checked at
+  convergence claim. Catches parser bugs, fixture drift, and suggestor
+  inconsistencies that no amount of LLM polish would surface.
+
+```text
+$ fathom-sparc analyse 0000320193
+INFO: 1 HITL gate(s) auto-approved during this run:
+  - gate=hitl-1-1-risk_factor_language::0000320193::2025 cycle=1 …
+[ promoted facts as before ]
+```
+
+That `INFO` line is the proof. The engine paused, surfaced the proposal,
+waited for a decision, and only then promoted. The integrity proof on the
+final `ConvergeResult` includes the gate event in its audit trail.
+
 **Next slices.**
 
-1. **Real ingest from SEC EDGAR (1.4.0).** Replace fixtures with a Rust
-   port of the python heading extractor (italic+bold span detection),
-   writing `RiskFactorSection` rows to Iceberg via DataFusion. Same
-   downstream shape; suggestors and engine wiring unchanged.
-2. **HuggingFace pipeline (1.5.0).** Fan out across the full
-   `JanosAudran/financial-reports-sec` corpus into the same Iceberg
-   tables, partition by `(cik, fiscal_year, form_type)`.
-3. **HITL gate + custom invariants (1.6.0).** Wire `EngineHitlPolicy` so a
-   high-magnitude language drift (jaccard < 0.5) pauses for human review
-   before promotion. Register a `RiskFactorDriftInvariant` that rejects
-   contradictory proposals (delta = 0 from one suggestor + non-empty
-   added/removed from the other should be a hard contradiction).
-4. **Organism formation (2.0.0).** Assemble both suggestors into
+1. **HuggingFace pipeline (1.5.0).** Use `hf-hub` to download a sample
+   from `JanosAudran/financial-reports-sec`, parse to `RiskFactorSection`
+   fixtures (same shape). Adds a `fathom-sparc ingest --source=huggingface`
+   subcommand. The downstream — engine, suggestors, invariant — is unchanged.
+2. **SEC EDGAR ingest (1.6.0).** Port the python heading extractor to
+   Rust (reqwest + scraper). Adds `fathom-sparc ingest --source=sec --cik=…`.
+   Once this lands, fixtures become test fixtures rather than the source
+   of truth.
+3. **Organism formation (2.0.0).** Assemble both suggestors into
    `DisclosureRiskFormation`. Run across a portfolio of CIKs for a
    screen-style output. This is the moment Organism earns its keep.
