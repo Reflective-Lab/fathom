@@ -128,9 +128,12 @@ fn portfolio_tight_budget_picks_highest_value_cik() {
     );
 
     let stdout = String::from_utf8(output.stdout).expect("stdout utf-8");
-    let selections: Vec<serde_json::Value> =
-        serde_json::from_str(&stdout).expect("stdout is JSON array of selections");
-    assert_eq!(selections.len(), 1, "exactly one solver selection expected");
+    let envelope: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout is JSON envelope");
+    let selections = envelope["portfolio_selections"]
+        .as_array()
+        .expect("portfolio_selections array");
+    assert_eq!(selections.len(), 1, "exactly one foundation selection expected");
     let sel = &selections[0];
     let selected = sel["selected"].as_array().expect("selected array");
     assert!(
@@ -155,12 +158,61 @@ fn portfolio_wide_budget_includes_all_ciks() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8(output.stdout).expect("stdout utf-8");
-    let selections: Vec<serde_json::Value> =
-        serde_json::from_str(&stdout).expect("stdout is JSON array");
+    let envelope: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout is JSON envelope");
+    let selections = envelope["portfolio_selections"]
+        .as_array()
+        .expect("portfolio_selections array");
     let selected = selections[0]["selected"].as_array().unwrap();
     assert_eq!(
         selected.len(),
         3,
         "with a generous budget the solver should pick all 3 candidate CIKs; got {selected:?}"
     );
+}
+
+/// Only runs with `--features=ferrox-mip`. Asserts that the Ferrox HiGHS
+/// MIP solver registers, runs, and produces a `MipPlan` whose objective
+/// agrees with the foundation `PortfolioSuggestor`'s selection — the
+/// canonical multi-solver pattern: two algorithms, same problem, same
+/// answer (because both are provably optimal).
+#[cfg(feature = "ferrox-mip")]
+#[test]
+fn portfolio_mip_solver_agrees_with_foundation() {
+    let output = Command::new(env!("CARGO_BIN_EXE_fathom-sparc"))
+        .args(["portfolio", "--budget=50"])
+        .output()
+        .expect("spawn fathom binary");
+    assert!(
+        output.status.success(),
+        "binary exited non-zero: stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout utf-8");
+    let envelope: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout is JSON envelope");
+
+    let foundation = envelope["portfolio_selections"]
+        .as_array()
+        .expect("portfolio_selections array");
+    let mip = envelope["mip_plans"].as_array().expect("mip_plans array");
+    assert_eq!(foundation.len(), 1, "expected one foundation selection");
+    assert_eq!(mip.len(), 1, "expected one Ferrox MIP plan");
+
+    let foundation_value = foundation[0]["total_value"]
+        .as_i64()
+        .expect("foundation total_value");
+    let mip_objective = mip[0]["objective_value"]
+        .as_f64()
+        .expect("mip objective_value");
+    assert_eq!(
+        foundation_value as f64, mip_objective,
+        "foundation DP and Ferrox HiGHS MIP must agree on optimal value"
+    );
+
+    let mip_status = mip[0]["status"].as_str().expect("mip status");
+    assert_eq!(mip_status, "optimal", "HiGHS should prove optimality");
+    let mip_gap = mip[0]["mip_gap"].as_f64().expect("mip_gap");
+    assert_eq!(mip_gap, 0.0, "optimal MIP gap is zero");
 }

@@ -77,23 +77,105 @@ impl Suggestor for PortfolioCoverageSeedSuggestor {
         if request.items.is_empty() {
             return AgentEffect::empty();
         }
-        // If the CLI seeded a budget directive into Constraints, honour it;
-        // otherwise build_request's "fits everything" default applies.
         if let Some(budget) = read_budget_directive(ctx) {
             request.budget = budget;
         }
-        let content = match serde_json::to_string(&request) {
+        let portfolio_json = match serde_json::to_string(&request) {
             Ok(s) => s,
             Err(_) => return AgentEffect::empty(),
         };
-        let proposal = ProposedFact::new(
-            ContextKey::Seeds,
-            format!("portfolio-request:{}", request.id),
-            content,
-            PROVENANCE,
-        );
-        AgentEffect::with_proposal(proposal)
+        // Emit BOTH request shapes — the foundation `PortfolioSuggestor`
+        // consumes `portfolio-request:*`, the Ferrox `HighsMipSuggestor`
+        // consumes `mip-request:*`. Whichever solver(s) the host wires
+        // pick(s) up the matching seed; the other is ignored. This is the
+        // canonical Converge multi-solver pattern: emit the problem in
+        // every shape we know, let downstream solvers compete.
+        let mip_json = build_mip_request_json(&request).to_string();
+        AgentEffect::with_proposals(vec![
+            ProposedFact::new(
+                ContextKey::Seeds,
+                format!("portfolio-request:{}", request.id),
+                portfolio_json,
+                PROVENANCE,
+            ),
+            ProposedFact::new(
+                ContextKey::Seeds,
+                format!("mip-request:{}", request.id),
+                mip_json,
+                PROVENANCE,
+            ),
+        ])
     }
+}
+
+/// Translates a `PortfolioRequest` (knapsack) into the generic MIP problem
+/// schema that `ferrox::HighsMipSuggestor` consumes:
+///
+/// - one binary variable `x_<label>` per item
+/// - one ≤-constraint: `Σ weight_i · x_i ≤ budget`
+/// - objective: `maximize Σ value_i · x_i`
+///
+/// Built as `serde_json::Value` rather than via the Ferrox `MipRequest`
+/// type to avoid pulling the `highs` feature (and its native lib build)
+/// into this crate. The HighsMipSuggestor side parses it back into its
+/// own `MipRequest`.
+pub fn build_mip_request_json(req: &PortfolioRequest) -> serde_json::Value {
+    let var_name = |label: &str| -> String {
+        let sanitized = label.replace("::", "_");
+        format!("x_{sanitized}")
+    };
+    let variables: Vec<serde_json::Value> = req
+        .items
+        .iter()
+        .map(|item| {
+            serde_json::json!({
+                "name": var_name(&item.label),
+                "lb": 0.0,
+                "ub": 1.0,
+                "kind": "binary",
+            })
+        })
+        .collect();
+    let budget_terms: Vec<serde_json::Value> = req
+        .items
+        .iter()
+        .map(|item| {
+            serde_json::json!({
+                "var": var_name(&item.label),
+                "coeff": item.weight as f64,
+            })
+        })
+        .collect();
+    let objective_terms: Vec<serde_json::Value> = req
+        .items
+        .iter()
+        .map(|item| {
+            serde_json::json!({
+                "var": var_name(&item.label),
+                "coeff": item.value as f64,
+            })
+        })
+        .collect();
+    // -1e308 is HiGHS / Ferrox's JSON proxy for negative infinity (see
+    // ferrox::serde_util::f64_inf). Keeps the constraint a pure upper-bound.
+    serde_json::json!({
+        "id": req.id,
+        "variables": variables,
+        "constraints": [
+            {
+                "name": "budget",
+                "lb": -1e308,
+                "ub": req.budget as f64,
+                "terms": budget_terms,
+            }
+        ],
+        "objective": {
+            "terms": objective_terms,
+            "maximize": true,
+        },
+        "time_limit_seconds": null,
+        "mip_gap_tolerance": null,
+    })
 }
 
 const BUDGET_DIRECTIVE_ID: &str = "portfolio-budget:risk-coverage";

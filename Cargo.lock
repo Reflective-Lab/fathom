@@ -453,6 +453,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "converge-ferrox-highs-sys"
+version = "0.4.1"
+source = "git+https://github.com/Reflective-Lab/ferrox-solvers?branch=main#9794a0df800d6b5d7d4a8e467b72721a2ce79190"
+dependencies = [
+ "cc",
+]
+
+[[package]]
+name = "converge-ferrox-solver"
+version = "0.4.1"
+source = "git+https://github.com/Reflective-Lab/ferrox-solvers?branch=main#9794a0df800d6b5d7d4a8e467b72721a2ce79190"
+dependencies = [
+ "async-trait",
+ "converge-ferrox-highs-sys",
+ "converge-model",
+ "converge-pack",
+ "converge-provider",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
 name = "converge-kernel"
 version = "3.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -764,6 +788,7 @@ dependencies = [
  "clap",
  "converge-arbiter-policy",
  "converge-core",
+ "converge-ferrox-solver",
  "converge-kernel",
  "converge-optimization",
  "converge-pack",

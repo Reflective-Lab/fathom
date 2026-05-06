@@ -476,18 +476,52 @@ more stable (higher Jaccard → lower analytical value-per-unit-weight).
 Tighter budgets pick the highest-value singleton; budget ≥ 70 picks all
 three. The decision is *deterministic* and *provably optimal* (DP).
 
-**Ferrox second path (in flight).** The same `PortfolioRequest` shape is
-exactly what `ferrox::HighsMipSuggestor` consumes when it's wired (one
-extra `engine.register_suggestor(HighsMipSuggestor)` line), and both
-solvers compete on the same Strategies key — the engine merges by
-confidence. Native HiGHS/OR-Tools build via the sibling
-`ferrox-solvers` checkout (`make highs && make ortools`); the
-`.cargo/config.toml` already points `FERROX_HIGHS_ROOT` and
-`FERROX_ORTOOLS_ROOT` at the standard layout. Adding the suggestor
-arrives in 1.7.1 once the native build completes.
+**1.7.1 — Ferrox HighsMipSuggestor wired (shipped).** The seed suggestor
+now emits *both* `portfolio-request:*` and `mip-request:*` shapes from
+the same drift signals. With `--features=ferrox-mip`, the CLI registers
+`ferrox::mip::HighsMipSuggestor` alongside the foundation
+`PortfolioSuggestor`. Both run; both produce facts in
+`ContextKey::Strategies`; the engine merges them in deterministic
+registration order.
 
-Tests: 28 passing (22 unit including 4 portfolio_seed unit + 2 ingest +
-4 binary integration including 2 portfolio).
+```text
+$ cargo run --features=fathom-sparc-cli/ferrox-mip --bin fathom-sparc -- portfolio --budget=50
+
+{
+  "portfolio_selections": [{
+    "selected": ["0000320193::FY2025", "0000789019::FY2025"],
+    "total_value": 93,
+    "total_weight": 47,
+    "utilization": 0.94
+  }],
+  "mip_plans": [{
+    "request_id": "fathom-sparc:portfolio:risk-coverage",
+    "status": "optimal",
+    "values": [
+      ["x_0000320193_FY2025", 1.0],
+      ["x_0000789019_FY2025", 1.0],
+      ["x_0001045810_FY2026", 0.0]
+    ],
+    "objective_value": 93.0,
+    "mip_gap": 0.0,
+    "solver": "highs-v1.14.0"
+  }]
+}
+```
+
+Two independent solvers, two independent algorithms (DP vs
+branch-and-cut), one provably-optimal answer — and the integration test
+`portfolio_mip_solver_agrees_with_foundation` asserts they match. This
+is the multi-suggestor pattern from Ferrox's own README, demonstrated
+end-to-end with real Apple/MSFT/NVDA 10-K data.
+
+A `build.rs` in `fathom-sparc-cli` propagates the HiGHS rpath onto the
+binary so contributors don't need `DYLD_LIBRARY_PATH`. Build without
+the feature: foundation DP only. Build with: both. The data shape is
+the same; the solver registration is the only diff.
+
+Tests: 28 default / 29 with `--features=ferrox-mip` (one extra
+multi-solver agreement test).
 
 **Next slices.**
 
@@ -495,13 +529,8 @@ Tests: 28 passing (22 unit including 4 portfolio_seed unit + 2 ingest +
    `JanosAudran/financial-reports-sec`; Rust port of the python heading
    extractor for live SEC EDGAR filings. Both produce
    `RiskFactorSection`s; downstream (engine, suggestors, invariant,
-   gates, portfolio formation) is unchanged.
-2. **Ferrox HighsMipSuggestor wired (1.7.1).** Native HiGHS build done,
-   second knapsack solver registered. Both `PortfolioSelection`
-   (foundation DP) and `MipPlan` (Ferrox HiGHS) appear in `Strategies`,
-   engine merges them by confidence. The Engine merge order is the demo
-   that "two solvers compete cleanly" works end-to-end.
-3. **Organism formation (2.0.0).** Assemble drift + language + portfolio
+   gates, portfolio formation, both solvers) is unchanged.
+2. **Organism formation (2.0.0).** Assemble drift + language + portfolio
    suggestors into `DisclosureRiskFormation` /
    `PortfolioCoverageFormation`. Run across larger portfolios for a
    screen-style output. Where Organism earns its keep.

@@ -229,6 +229,11 @@ async fn portfolio(budget: i64, fixtures_dir: &std::path::Path) -> anyhow::Resul
     engine.register_suggestor(RiskFactorLanguageSuggestor::new());
     engine.register_suggestor(PortfolioCoverageSeedSuggestor::new());
     engine.register_suggestor(PortfolioSuggestor);
+    // Ferrox HighsMipSuggestor — registered when built with
+    // `--features=ferrox-mip`. Both suggestors then compete on
+    // ContextKey::Strategies; engine merges in registration order.
+    #[cfg(feature = "ferrox-mip")]
+    engine.register_suggestor(ferrox::mip::HighsMipSuggestor);
     engine.register_invariant(RiskFactorMassConservationInvariant);
     engine.set_hitl_policy(EngineHitlPolicy {
         confidence_threshold: Some(HITL_CONFIDENCE_THRESHOLD),
@@ -261,21 +266,32 @@ async fn portfolio(budget: i64, fixtures_dir: &std::path::Path) -> anyhow::Resul
         "portfolio engine finished"
     );
 
+    // Output is a structured pair so both solvers' answers are visible side
+    // by side when both are registered. With the foundation suggestor only,
+    // `mip_plans` is empty; with `--features=ferrox-mip`, both populate and
+    // a reader can verify they agree (or notice when they disagree).
     let strategies = result.context.get(ContextKey::Strategies);
-    let selections: Vec<PortfolioSelection> = strategies
+    let portfolio_selections: Vec<PortfolioSelection> = strategies
         .iter()
         .filter(|f| f.id().as_str().starts_with("portfolio-selection:"))
         .filter_map(|f| serde_json::from_str(f.content()).ok())
         .collect();
+    let mip_plans: Vec<serde_json::Value> = strategies
+        .iter()
+        .filter(|f| f.id().as_str().starts_with("mip-plan:"))
+        .filter_map(|f| serde_json::from_str(f.content()).ok())
+        .collect();
 
-    if selections.is_empty() {
+    if portfolio_selections.is_empty() && mip_plans.is_empty() {
         println!("no portfolio selection promoted; check that drift+language suggestors fired");
         return Ok(());
     }
 
-    // When PortfolioSuggestor + Ferrox HighsMipSuggestor both run, multiple
-    // selections appear here — print all so the formation pattern is visible.
-    println!("{}", serde_json::to_string_pretty(&selections)?);
+    let envelope = serde_json::json!({
+        "portfolio_selections": portfolio_selections,
+        "mip_plans": mip_plans,
+    });
+    println!("{}", serde_json::to_string_pretty(&envelope)?);
     Ok(())
 }
 
