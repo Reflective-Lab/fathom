@@ -5,29 +5,18 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish = false
-description = "HuggingFace → DataFusion → Iceberg materialisation for Fathom."
+description = "Ingestion pipeline for Fathom — fixture loading at 1.0; HuggingFace → DataFusion → Iceberg materialisation lands in 1.x."
 
 [dependencies]
 fathom-core.workspace = true
 
-# Lakehouse stack — `iceberg-datafusion 0.6` is intentionally not pulled in
-# at build time: it pins datafusion ^47 while we use 53. Track upstream and
-# re-enable once iceberg-rust catches up to a datafusion 53-compatible release.
-datafusion.workspace = true
-arrow.workspace = true
-parquet.workspace = true
-object_store.workspace = true
-iceberg.workspace = true
-iceberg-catalog-rest.workspace = true
-
-# Source
-hf-hub.workspace = true
-
-# Async + utilities
-tokio.workspace = true
-async-trait.workspace = true
-anyhow.workspace = true
-thiserror.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tracing.workspace = true
+thiserror.workspace = true
+
+# NOTE: lakehouse deps (datafusion, arrow, parquet, object_store, iceberg,
+# hf-hub) are declared in `workspace.dependencies` as the architectural
+# catalogue. They get pulled into this crate's build graph when the
+# materialisation pipeline lands — not before, to keep build times sane and
+# avoid the iceberg-datafusion 0.6 ↔ datafusion 53 mismatch on a path that
+# doesn't yet need them.

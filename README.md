@@ -1,6 +1,6 @@
-# Fathom
+# Fathom — SPARC
 
-**Convergence-driven analysis of public-company financial filings.**
+**Fathom** runs SPARC workflows for convergence-driven analysis of public-company financial filings.
 
 Fathom turns the SEC EDGAR corpus and the wider HuggingFace financial-data
 ecosystem into a queryable substrate that **Organism formations** interrogate
@@ -238,20 +238,62 @@ laptop to cloud is configuration, not code.
 
 ---
 
-## Status — 1.0.0
+## Status
 
-This release locks the **architecture and dependency surface**. The four
-crates exist, the platform deps (Converge 3.7.6, Organism 1.5.0, Prism via
-git, Sail-aligned arrow/datafusion/parquet/object_store) are wired, and the
-local-infra story (RustFS + Sail in `compose.yml`) is in place.
+**1.0.0 — architecture + dependency surface.** Four crates exist; platform
+deps (Converge 3.7.6, Organism 1.4.0, Prism via git, Sail-aligned
+arrow/datafusion/parquet/object_store) are wired; local infra (RustFS + Sail
+in `compose.yml`) is in place.
 
-Implementation lands in 1.x — first end-to-end slice:
+**1.1.0 — first end-to-end slice (shipped).**
 
-1. Pick one CIK (e.g. Apple, `0000320193`) and one filing year.
-2. Implement `fathom-ingest` enough to land that one filing as Iceberg rows.
-3. Implement one `RiskFactorDriftSuggestor`.
-4. Wire it into a `DisclosureRiskFormation` with a single promoted fact.
-5. Confirm the run artifact carries provenance end to end.
+```bash
+$ fathom analyse 0000320193
+[
+  {
+    "key": "Proposals",
+    "id": "risk_factor_drift::0000320193::2025",
+    "content": {
+      "current": { "cik": "0000320193", "form": "10-K", "fiscal_year": 2025 },
+      "prior":   { "cik": "0000320193", "form": "10-K", "fiscal_year": 2024 },
+      "current_count": 27,
+      "prior_count":   28,
+      "delta":         -1
+    },
+    "provenance": "fathom:risk_factor_drift:v1"
+  }
+]
+```
 
-Everything else — more suggestors, more formations, the full corpus, the
-Sail cluster — is incremental from there.
+Real Apple 10-K data: Item 1A risk factor headings extracted from
+`aapl-20240928.htm` and `aapl-20250927.htm` on SEC EDGAR, committed under
+`fixtures/`. The drift signal isn't just the count (-1) — Apple removed the
+dedicated "retail stores" risk factor and rephrased the ESG-related risk
+factor in FY25; future suggestors will surface that textual drift alongside
+the count.
+
+What's wired:
+- `fathom-ingest::load_risk_factor_fixture()` — JSON → `RiskFactorSection`.
+- `fathom-suggestors::RiskFactorDriftSuggestor` — Converge `Suggestor`,
+  reads `ContextKey::Signals`, proposes to `ContextKey::Proposals` with
+  provenance `fathom:risk_factor_drift:v1`.
+- `fathom-cli` — discovers fixtures by CIK, builds an in-memory `Context`
+  via `converge_pack::fact::kernel_authority::new_fact`, runs the
+  suggestor, prints proposals as JSON.
+
+**Next slices.**
+
+1. **A second suggestor** — `RiskFactorLanguageSuggestor` over the same
+   sections (cosine drift on heading embeddings, or a simple Jaccard on
+   token sets). Two suggestors composing is the moment to introduce a real
+   Converge `Engine::run()` integration test.
+2. **Real ingest from SEC EDGAR** — replace the fixture path with a
+   parser that reads `aapl-{date}.htm` directly, writes `RiskFactorSection`
+   rows to Iceberg via DataFusion. Same downstream shape; suggestors don't
+   change.
+3. **HuggingFace pipeline** — fan out across the full
+   `JanosAudran/financial-reports-sec` corpus into the same Iceberg
+   tables, partition by `(cik, fiscal_year, form_type)`.
+4. **Organism formation** — assemble both suggestors into
+   `DisclosureRiskFormation`. Run across an SBOM-equivalent (a portfolio of
+   CIKs) for a screen-style output.
