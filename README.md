@@ -287,27 +287,44 @@ What's wired in 1.2.0:
 Tests: 11 unit (5 drift + 6 language) + 2 ingest + 2 binary integration =
 **15 passing**.
 
-**Deliberate deferral in 1.2.0.** The CLI runs each `Suggestor::execute()`
-directly rather than through `Engine::run()`. This was the right call when
-there was only one suggestor (no scheduling decisions to make), but with two
-it now hides what the engine actually contributes — eligibility checks,
-deterministic merge order, the promotion gate that turns `ProposedFact` into
-authoritative `Fact` with full provenance. Wiring the real engine is the
-1.3.0 slice.
+**1.3.0 — real engine integration (shipped).** The CLI no longer uses a
+hand-rolled `Context`. It builds a real `converge_kernel::ContextState`,
+seeds the loaded sections via `add_input_with_provenance(ContextKey::Signals, …)`,
+constructs an `Engine`, registers both suggestors, and calls `engine.run()`.
+The engine drains the seeded inputs, promotes them to authoritative `Fact`s,
+runs eligibility checks, executes suggestors in deterministic registration
+order, and validates each `ProposedFact` through the promotion gate before
+admitting it as a `Fact`.
+
+The output now reflects that:
+
+```jsonc
+{
+  "key": "Proposals",
+  "id": "risk_factor_drift::0000320193::2025",
+  "content": { "current_count": 27, "prior_count": 28, "delta": -1, … },
+  "promoted_by": "FactActor { id: ActorId(\"converge-engine\"), kind: System }"
+}
+```
+
+`promoted_by: "converge-engine"` is the proof — a hand-rolled context
+couldn't supply that string. The suggestor that proposed the fact is encoded
+in the id prefix (`risk_factor_drift::…` vs `risk_factor_language::…`).
 
 **Next slices.**
 
-1. **`Engine::run()` integration (1.3.0).** Replace the hand-rolled
-   `MockContext` with a real `ContextState`, register both suggestors with
-   the engine, run the convergence loop, inspect promoted `Fact`s. This is
-   what makes the architecture diagram in this README actually true.
-2. **Real ingest from SEC EDGAR (1.4.0).** Replace fixtures with a Rust
+1. **Real ingest from SEC EDGAR (1.4.0).** Replace fixtures with a Rust
    port of the python heading extractor (italic+bold span detection),
    writing `RiskFactorSection` rows to Iceberg via DataFusion. Same
-   downstream shape; suggestors unchanged.
-3. **HuggingFace pipeline (1.5.0).** Fan out across the full
+   downstream shape; suggestors and engine wiring unchanged.
+2. **HuggingFace pipeline (1.5.0).** Fan out across the full
    `JanosAudran/financial-reports-sec` corpus into the same Iceberg
    tables, partition by `(cik, fiscal_year, form_type)`.
+3. **HITL gate + custom invariants (1.6.0).** Wire `EngineHitlPolicy` so a
+   high-magnitude language drift (jaccard < 0.5) pauses for human review
+   before promotion. Register a `RiskFactorDriftInvariant` that rejects
+   contradictory proposals (delta = 0 from one suggestor + non-empty
+   added/removed from the other should be a hard contradiction).
 4. **Organism formation (2.0.0).** Assemble both suggestors into
    `DisclosureRiskFormation`. Run across a portfolio of CIKs for a
    screen-style output. This is the moment Organism earns its keep.

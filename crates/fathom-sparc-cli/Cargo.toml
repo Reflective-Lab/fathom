@@ -16,9 +16,10 @@ fathom-sparc-core.workspace = true
 fathom-sparc-ingest.workspace = true
 fathom-sparc-suggestors.workspace = true
 
-# Converge contracts — `kernel-authority` exposes the `new_fact` constructor
-# used to seed the in-memory Context the suggestor runs against.
-converge-pack = { workspace = true, features = ["kernel-authority"] }
+# Converge — engine + context state + types come from the kernel; pack provides
+# the Suggestor/ContextKey/Fact types the suggestors are written against.
+converge-kernel.workspace = true
+converge-pack.workspace = true
 
 # CLI plumbing
 clap.workspace = true
@@ -29,8 +30,5 @@ serde_json.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
-# NOTE: converge-kernel/storage and the organism-* crates are declared in
-# `workspace.dependencies` and pulled into this crate when the engine
-# integration and formation assembly slices land. The first-slice CLI runs
-# a single suggestor directly against a hand-rolled Context — enough to
-# demonstrate the analytical pipeline end-to-end without engine boilerplate.
+# NOTE: organism-* crates are declared in `workspace.dependencies` and pulled
+# into this crate when formation assembly lands.

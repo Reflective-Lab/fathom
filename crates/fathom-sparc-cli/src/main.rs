@@ -1,19 +1,24 @@
-//! Fathom CLI — first-slice entry point.
+//! Fathom — SPARC CLI.
 //!
-//! At 1.0 the CLI loads `RiskFactorSection` fixtures from `fixtures/`, wraps
-//! them in a minimal in-memory `Context`, runs `RiskFactorDriftSuggestor`
-//! directly, and prints the proposed drift facts. The full Converge engine
-//! (eligibility scheduling, promotion gate, integrity proof) lands when a
-//! second suggestor exists worth composing with.
+//! `fathom-sparc analyse <CIK>` discovers JSON fixtures under `fixtures/`
+//! for that CIK, seeds them as inputs into a `ContextState`, registers the
+//! risk-factor drift and language suggestors with a Converge `Engine`, runs
+//! the convergence loop, and prints the promoted facts (with provenance) as
+//! JSON.
+//!
+//! The engine is the load-bearing piece: it owns eligibility scheduling,
+//! deterministic merge order, the promotion gate that turns `ProposedFact`
+//! into authoritative `Fact`, and the integrity proof for the final
+//! context. None of that is fake — the same engine drives Converge
+//! consumers like Organism and Wolfgang.
 
 use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{Context as _, bail};
 use clap::{Parser, Subcommand};
-use converge_pack::fact::Fact;
-use converge_pack::fact::kernel_authority::new_fact;
-use converge_pack::{Context, ContextKey, Suggestor};
+use converge_kernel::{ContextState, Engine};
+use converge_pack::{ContextKey, Fact};
 use fathom_sparc_core::{Cik, RiskFactorSection};
 use fathom_sparc_ingest::load_risk_factor_fixture;
 use fathom_sparc_suggestors::{RiskFactorDriftSuggestor, RiskFactorLanguageSuggestor};
@@ -22,7 +27,7 @@ const FIXTURES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures"
 
 #[derive(Parser)]
 #[command(
-    name = "fathom",
+    name = "fathom-sparc",
     about = "Convergence-driven analysis of public-company financial filings"
 )]
 struct Cli {
@@ -33,9 +38,10 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Materialise a HuggingFace dataset slice into the local Iceberg lakehouse.
-    /// Not yet implemented at 1.0; fixtures under `fixtures/` are the on-ramp.
+    /// Not yet implemented; fixtures under `fixtures/` are the on-ramp.
     Ingest,
-    /// Run the risk-factor-drift suggestor against the fixtures for `cik`.
+    /// Run the engine for `cik`: register both suggestors, converge, print
+    /// promoted facts as JSON.
     Analyse {
         /// SEC CIK (Central Index Key), e.g. 0000320193 for Apple.
         cik: String,
@@ -60,8 +66,6 @@ async fn main() -> anyhow::Result<()> {
     }
 }
 
-/// Loads every JSON fixture in `fixtures_dir`, keeps those for `cik`, runs
-/// the suggestor, and prints the proposed facts as pretty JSON.
 async fn analyse(cik: Cik, fixtures_dir: &std::path::Path) -> anyhow::Result<()> {
     let sections = load_sections_for_cik(&cik, fixtures_dir)?;
     if sections.len() < 2 {
@@ -78,33 +82,31 @@ async fn analyse(cik: Cik, fixtures_dir: &std::path::Path) -> anyhow::Result<()>
         "loaded fixtures"
     );
 
-    let ctx = build_context(&sections)?;
-    let mut all_proposals: Vec<converge_pack::ProposedFact> = Vec::new();
+    let context = seed_context(&sections)?;
+    let mut engine = Engine::new();
+    engine.register_suggestor(RiskFactorDriftSuggestor::new());
+    engine.register_suggestor(RiskFactorLanguageSuggestor::new());
 
-    // Run each suggestor in registration order. Engine integration (eligibility
-    // scheduling, dependency-driven re-runs, promotion gate) lands when there
-    // are signals for suggestors to compose on; for now, sequential direct
-    // calls demonstrate the analytical surface end-to-end.
-    let drift = RiskFactorDriftSuggestor::new();
-    if drift.accepts(&ctx) {
-        all_proposals.extend(drift.execute(&ctx).await.proposals);
-    }
-    let language = RiskFactorLanguageSuggestor::new();
-    if language.accepts(&ctx) {
-        all_proposals.extend(language.execute(&ctx).await.proposals);
-    }
+    let result = engine
+        .run(context)
+        .await
+        .map_err(|e| anyhow::anyhow!("engine run failed: {e:?}"))?;
 
-    if all_proposals.is_empty() {
-        println!("no consecutive-year pairs found; no proposals emitted");
+    tracing::info!(
+        cycles = result.cycles,
+        converged = result.converged,
+        stop_reason = ?result.stop_reason,
+        "engine finished"
+    );
+
+    let promoted = result.context.get(ContextKey::Proposals);
+    if promoted.is_empty() {
+        println!("no proposals promoted to facts");
         return Ok(());
     }
 
-    println!(
-        "{}",
-        serde_json::to_string_pretty(
-            &all_proposals.iter().map(ProposalView::from).collect::<Vec<_>>()
-        )?
-    );
+    let view: Vec<FactView<'_>> = promoted.iter().map(FactView::from).collect();
+    println!("{}", serde_json::to_string_pretty(&view)?);
     Ok(())
 }
 
@@ -130,57 +132,44 @@ fn load_sections_for_cik(
     Ok(out)
 }
 
-/// Wraps the loaded sections as `Fact`s under `ContextKey::Signals`, the
-/// shape `RiskFactorDriftSuggestor` expects.
-fn build_context(sections: &[RiskFactorSection]) -> anyhow::Result<MockContext> {
-    let signals = sections
-        .iter()
-        .map(|s| {
-            let id = format!(
-                "filing::{}::{}",
-                s.filing.cik.as_str(),
-                s.filing.fiscal_year
-            );
-            let content = serde_json::to_string(s)?;
-            Ok::<_, serde_json::Error>(new_fact(ContextKey::Signals, id, content))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(MockContext { signals })
-}
-
-/// Minimal in-memory `Context` carrying signals only. The first-slice CLI
-/// runs a single suggestor directly and never enters the engine, so we don't
-/// need to model the full set of context keys.
-pub struct MockContext {
-    signals: Vec<Fact>,
-}
-
-impl Context for MockContext {
-    fn has(&self, key: ContextKey) -> bool {
-        matches!(key, ContextKey::Signals) && !self.signals.is_empty()
+/// Stages each loaded section as an *input* into a fresh `ContextState`.
+/// The engine drains these proposals at cycle 0 and promotes them to
+/// authoritative `Fact`s under `ContextKey::Signals` — which is exactly
+/// what the suggestors then read from.
+fn seed_context(sections: &[RiskFactorSection]) -> anyhow::Result<ContextState> {
+    let mut ctx = ContextState::new();
+    for s in sections {
+        let id = format!(
+            "filing::{}::{}",
+            s.filing.cik.as_str(),
+            s.filing.fiscal_year
+        );
+        let content = serde_json::to_string(s)?;
+        ctx.add_input_with_provenance(
+            ContextKey::Signals,
+            id.clone(),
+            content,
+            "fathom-sparc:fixture",
+        )
+        .map_err(|e| anyhow::anyhow!("add_input failed for {id}: {e:?}"))?;
     }
-
-    fn get(&self, key: ContextKey) -> &[Fact] {
-        match key {
-            ContextKey::Signals => &self.signals,
-            _ => &[],
-        }
-    }
+    Ok(ctx)
 }
 
-/// Display-friendly projection of `ProposedFact` — strips the internal id
-/// type wrapper so the JSON output reads cleanly.
+/// Display-friendly projection of a promoted `Fact` — strips the internal id
+/// type wrapper so the JSON output reads cleanly. Provenance is recovered
+/// from the fact's promotion record (the actor that promoted it).
 #[derive(serde::Serialize)]
-struct ProposalView<'a> {
+struct FactView<'a> {
     key: &'a str,
     id: String,
     content: serde_json::Value,
-    provenance: &'a str,
+    promoted_by: String,
 }
 
-impl<'a> From<&'a converge_pack::ProposedFact> for ProposalView<'a> {
-    fn from(p: &'a converge_pack::ProposedFact) -> Self {
-        let key = match p.key {
+impl<'a> From<&'a Fact> for FactView<'a> {
+    fn from(f: &'a Fact) -> Self {
+        let key = match f.key() {
             ContextKey::Proposals => "Proposals",
             ContextKey::Signals => "Signals",
             ContextKey::Hypotheses => "Hypotheses",
@@ -194,13 +183,13 @@ impl<'a> From<&'a converge_pack::ProposedFact> for ProposalView<'a> {
             ContextKey::Disagreements => "Disagreements",
             ContextKey::ConsensusOutcomes => "ConsensusOutcomes",
         };
-        let content =
-            serde_json::from_str(&p.content).unwrap_or(serde_json::Value::String(p.content.clone()));
+        let content = serde_json::from_str(&f.content)
+            .unwrap_or(serde_json::Value::String(f.content.clone()));
         Self {
             key,
-            id: p.id.to_string(),
+            id: f.id.to_string(),
             content,
-            provenance: &p.provenance,
+            promoted_by: format!("{:?}", f.promotion_record().approver()),
         }
     }
 }

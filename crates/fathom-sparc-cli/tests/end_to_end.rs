@@ -1,5 +1,6 @@
 //! End-to-end smoke test: run the binary against real Apple fixtures and
-//! assert the proposed `RiskFactorDrift` carries the expected shape.
+//! assert that the Converge engine promoted both suggestors' proposals into
+//! authoritative facts with the expected shape.
 //!
 //! Cargo provides `CARGO_BIN_EXE_<name>` to integration tests so we can spawn
 //! the just-built binary without hard-coding a path.
@@ -7,7 +8,7 @@
 use std::process::Command;
 
 #[test]
-fn analyse_apple_emits_both_drift_signals_for_fy24_to_fy25() {
+fn engine_promotes_both_drift_facts_for_apple_fy24_to_fy25() {
     let output = Command::new(env!("CARGO_BIN_EXE_fathom-sparc"))
         .args(["analyse", "0000320193"])
         .output()
@@ -20,29 +21,44 @@ fn analyse_apple_emits_both_drift_signals_for_fy24_to_fy25() {
     );
 
     let stdout = String::from_utf8(output.stdout).expect("stdout utf-8");
-    let parsed: serde_json::Value =
-        serde_json::from_str(&stdout).expect("stdout is JSON");
+    let facts: Vec<serde_json::Value> =
+        serde_json::from_str(&stdout).expect("stdout is JSON array");
+    assert_eq!(facts.len(), 2, "expected two promoted facts");
 
-    let proposals = parsed.as_array().expect("array of proposals");
-    assert_eq!(proposals.len(), 2, "expected one drift + one language proposal");
+    // Every fact must carry the engine as the promoting actor — that's the
+    // real proof the convergence loop ran, rather than a hand-rolled context.
+    for f in &facts {
+        let promoted_by = f["promoted_by"].as_str().expect("promoted_by");
+        assert!(
+            promoted_by.contains("converge-engine"),
+            "fact not promoted by engine: {promoted_by}"
+        );
+        assert_eq!(f["key"], "Proposals");
+    }
 
-    let by_provenance: std::collections::HashMap<&str, &serde_json::Value> = proposals
+    // Suggestor identity is encoded in the fact id (the engine doesn't
+    // re-expose the ProposedFact's free-form provenance as a top-level field).
+    let by_suggestor: std::collections::HashMap<&str, &serde_json::Value> = facts
         .iter()
-        .map(|p| (p["provenance"].as_str().unwrap(), p))
+        .map(|f| {
+            let id = f["id"].as_str().unwrap();
+            let prefix = id.split("::").next().unwrap();
+            (prefix, f)
+        })
         .collect();
 
-    let count = by_provenance
-        .get("fathom:risk_factor_drift:v1")
-        .expect("count drift proposal");
+    let count = by_suggestor
+        .get("risk_factor_drift")
+        .expect("count drift fact");
     assert_eq!(count["content"]["current"]["fiscal_year"], 2025);
     assert_eq!(count["content"]["prior"]["fiscal_year"], 2024);
     assert_eq!(count["content"]["current_count"], 27);
     assert_eq!(count["content"]["prior_count"], 28);
     assert_eq!(count["content"]["delta"], -1);
 
-    let language = by_provenance
-        .get("fathom-sparc:risk_factor_language:v1")
-        .expect("language drift proposal");
+    let language = by_suggestor
+        .get("risk_factor_language")
+        .expect("language drift fact");
     let content = &language["content"];
     assert_eq!(content["current"]["fiscal_year"], 2025);
     assert_eq!(content["prior"]["fiscal_year"], 2024);
@@ -50,12 +66,8 @@ fn analyse_apple_emits_both_drift_signals_for_fy24_to_fy25() {
     let added = content["added"].as_array().expect("added array");
     let removed = content["removed"].as_array().expect("removed array");
     let jaccard = content["jaccard_similarity"].as_f64().expect("jaccard f64");
-    // Apple kept most headings byte-identical but rephrased a handful and
-    // dropped the dedicated retail-stores risk factor. Strict numeric
-    // equality is brittle; assert plausible bounds that would catch a
-    // regression but tolerate a future re-extraction tweaking by ±2.
     assert!(
-        identical >= 18 && identical <= 25,
+        (18..=25).contains(&identical),
         "identical={identical} outside expected window"
     );
     assert!(

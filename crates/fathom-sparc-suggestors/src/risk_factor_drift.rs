@@ -20,7 +20,7 @@ use converge_pack::{AgentEffect, Context, ContextKey, ProposedFact, Suggestor};
 use fathom_sparc_core::{Cik, RiskFactorSection, analytic::RiskFactorDrift};
 use std::collections::HashMap;
 
-const PROVENANCE: &str = "fathom:risk_factor_drift:v1";
+const PROVENANCE: &str = "fathom-sparc:risk_factor_drift:v1";
 
 pub struct RiskFactorDriftSuggestor {
     name: String,
