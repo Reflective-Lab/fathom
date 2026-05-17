@@ -1,0 +1,24 @@
+{
+  "name": "fathom-sparc-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5110",
+    "dev:web": "vite --host 127.0.0.1 --port 5110",
+    "build": "vite build",
+    "build:web": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4110",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.8.0",
+    "svelte": "^5.38.0"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^6.1.0",
+    "@tauri-apps/cli": "^2.8.0",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.0"
+  }
+}

@@ -1,12 +1,26 @@
-# Fathom — SPARC
+# Fathom — Narrative
 
-**Fathom** runs SPARC workflows for convergence-driven analysis of public-company financial filings.
+**Fathom** is a temporal-narrative analyzer for corporate disclosures. It
+watches *how the language of risk changes* across a company's filings over
+time, and across a portfolio of companies at one point in time — surfacing
+drift signals an analyst couldn't see by reading any single filing.
 
-Fathom turns the SEC EDGAR corpus and the wider HuggingFace financial-data
-ecosystem into a queryable substrate that **Organism formations** interrogate
-through **Converge** suggestors and **Prism** analytic packs. The output isn't
-a summary — it's a set of provenance-bearing facts that survived a promotion
-gate, plus the disagreements that didn't.
+The app turns the SEC EDGAR corpus (and, increasingly, any structured
+narrative corpus that can be indexed by entity + time) into a queryable
+substrate that **Converge** suggestors interrogate through **Prism**
+analytic packs. The output isn't a summary — it's a set of provenance-
+bearing facts that survived a promotion gate, plus the disagreements that
+didn't.
+
+> **About the name.** The workspace uses an alias-purpose naming pattern
+> (`mnemos-knowledge`, `prism-analytics`, `soter-smt`, `crucible-models`,
+> `embassy-ports`). `fathom` is the alias — "to understand deeply" — and
+> `narrative` is the purpose: language drift across narrative corpora,
+> not the bytes that hold those narratives. The earlier `sparc` purpose
+> was scaffolding for an SEC-specific phase; with SEC transport now
+> lifted into the `embassy-sec-edgar` port, the app's actual
+> differentiator (cross-time, cross-cohort narrative analysis) is the
+> name's load-bearing word.
 
 ---
 
@@ -205,8 +219,8 @@ Prism packs    Fathom suggestors
 | `fathom-suggestors` | Converge suggestors that query Iceberg slices and propose facts |
 | `fathom-cli` | Binary entry point; assembles formations and runs convergence |
 
-Path-deps to `~/dev/work/converge`, `~/dev/extensions/prism`, and
-`~/dev/work/organism` for co-development. Versions of arrow, datafusion,
+Path-deps to `~/dev/reflective/stack/bedrock-platform/converge`, `~/dev/reflective/stack/mosaic-extensions/prism`, and
+`~/dev/reflective/stack/bedrock-platform/organism` for co-development. Versions of arrow, datafusion,
 parquet, and object_store are pinned to match Sail's foundation, so the
 stack is consistent whether you run DataFusion in-process or Sail
 distributed.
@@ -247,7 +261,7 @@ run.
 Build OR-Tools and HiGHS once in the sibling Ferrox checkout:
 
 ```bash
-cd ~/dev/extensions/ferrox-solvers
+cd ~/dev/reflective/stack/mosaic-extensions/ferrox-solvers
 make ortools
 make highs
 ```
@@ -256,9 +270,9 @@ Fathom sets `FERROX_ORTOOLS_ROOT` and `FERROX_HIGHS_ROOT` for Cargo through
 `.cargo/config.toml` using the standard local checkout layout:
 
 ```text
-~/dev/apps/fathom-sparc
-~/dev/extensions/ferrox-solvers/vendor/ortools/build
-~/dev/extensions/ferrox-solvers/vendor/highs/build
+~/dev/reflective/stack/marquee-apps/fathom-narrative
+~/dev/reflective/stack/mosaic-extensions/ferrox-solvers/vendor/ortools/build
+~/dev/reflective/stack/mosaic-extensions/ferrox-solvers/vendor/highs/build
 ```
 
 CI and contributors with a different layout need the same environment
@@ -289,7 +303,7 @@ the architecture's central claim: **two perspectives that disagree are more
 informative than one perspective averaged.**
 
 ```text
-$ fathom-sparc analyse 0000320193
+$ fathom-narrative analyse 0000320193
 
 count drift     →  28 → 27   (delta -1, visually quiet)
 language drift  →  jaccard 0.618, +6 added / -7 removed (loud)
@@ -311,11 +325,11 @@ What's wired in 1.2.0:
 
 | Crate | Owns |
 |---|---|
-| `fathom-sparc-core::analytic` | `RiskFactorDrift` (count) + `RiskFactorLanguageDrift` (Jaccard, identical_count, added/removed lists) |
-| `fathom-sparc-ingest::load_risk_factor_fixture` | JSON → `RiskFactorSection` |
-| `fathom-sparc-suggestors::RiskFactorDriftSuggestor` | provenance `fathom:risk_factor_drift:v1` |
-| `fathom-sparc-suggestors::RiskFactorLanguageSuggestor` | provenance `fathom-sparc:risk_factor_language:v1` |
-| `fathom-sparc-cli` | discovers fixtures by CIK, runs both suggestors sequentially against a hand-rolled `Context`, prints proposals as JSON |
+| `fathom-narrative-core::analytic` | `RiskFactorDrift` (count) + `RiskFactorLanguageDrift` (Jaccard, identical_count, added/removed lists) |
+| `fathom-narrative-ingest::load_risk_factor_fixture` | JSON → `RiskFactorSection` |
+| `fathom-narrative-suggestors::RiskFactorDriftSuggestor` | provenance `fathom:risk_factor_drift:v1` |
+| `fathom-narrative-suggestors::RiskFactorLanguageSuggestor` | provenance `fathom-narrative:risk_factor_language:v1` |
+| `fathom-narrative-cli` | discovers fixtures by CIK, runs both suggestors sequentially against a hand-rolled `Context`, prints proposals as JSON |
 
 Tests: 11 unit (5 drift + 6 language) + 2 ingest + 2 binary integration =
 **15 passing**.
@@ -351,7 +365,7 @@ exercises its governance machinery, not just its scheduling.
   `with_confidence(jaccard)` on each proposal. The CLI configures
   `EngineHitlPolicy { confidence_threshold: Some(0.7) }`. When Apple's
   FY24→FY25 language drift fires (Jaccard 0.618), the engine pauses,
-  the CLI auto-approves with provenance `fathom-sparc:auto-approver`,
+  the CLI auto-approves with provenance `fathom-narrative:auto-approver`,
   and the engine resumes. In a production setup the auto-approve loop
   becomes a real prompt or an escalation to Slack/email.
 - **`RiskFactorMassConservationInvariant`.** Mathematical identity:
@@ -361,7 +375,7 @@ exercises its governance machinery, not just its scheduling.
   inconsistencies that no amount of LLM polish would surface.
 
 ```text
-$ fathom-sparc analyse 0000320193
+$ fathom-narrative analyse 0000320193
 INFO: 1 HITL gate(s) auto-approved during this run:
   - gate=hitl-1-1-risk_factor_language::0000320193::2025 cycle=1 …
 [ promoted facts as before ]
@@ -378,7 +392,7 @@ Two things landed together because they unblocked each other:
    foundation crates into separate Reflective-Lab extensions
    (`converge-knowledge → mnemos`, `-analytics → prism`, `-policy → arbiter`,
    `-domain → atelier`, `-provider-adapters → manifold`). For
-   fathom-sparc the migration was lightweight: bump `converge-* = "3.8.1"`,
+   fathom-narrative the migration was lightweight: bump `converge-* = "3.8.1"`,
    rename `Fact → ContextFact`, switch `f.id`/`f.content` from fields to
    methods, drop the (now-removed) `kernel-authority` feature, and refactor
    the invariant tests to exercise a pure-data helper instead of mocking
@@ -386,7 +400,7 @@ Two things landed together because they unblocked each other:
 
 2. **Cedar policy front gate via `arbiter`.** The CLI now runs a
    `PolicyEngine::evaluate` preflight before the Converge engine starts.
-   Policy text lives at `policies/fathom_sparc.cedar` and is embedded into
+   Policy text lives at `policies/fathom_narrative.cedar` and is embedded into
    the binary at build time:
 
    ```cedar
@@ -406,7 +420,7 @@ Two things landed together because they unblocked each other:
    };
    ```
 
-   The principal is hard-coded to `agent:fathom-sparc:analyst` (Participatory,
+   The principal is hard-coded to `agent:fathom-narrative:analyst` (Participatory,
    `["financial-analysis"]`) for the dev CLI; in a SaaS context it comes
    from an auth token and the policy file is the single editable artefact
    that controls who can do what.
@@ -423,14 +437,14 @@ library:
 | **Acceptance** | Custom invariant | `converge_kernel::Invariant` | "Are the promoted facts internally consistent?" | `RiskFactorMassConservationInvariant` accepts (added=6, removed=7, delta=-1 ✓) |
 
 ```text
-$ RUST_LOG=info fathom-sparc analyse 0000320193
-INFO  fathom_sparc: policy preflight: permitted
-      principal=agent:fathom-sparc:analyst
-      resource=flow:fathom-sparc:analyse:0000320193
+$ RUST_LOG=info fathom-narrative analyse 0000320193
+INFO  fathom_narrative: policy preflight: permitted
+      principal=agent:fathom-narrative:analyst
+      resource=flow:fathom-narrative:analyse:0000320193
 INFO  converge_core::engine: Proposal requires HITL approval — pausing convergence
-WARN  fathom_sparc: auto-approving HITL gate (confidence ≤ 0.7) …
+WARN  fathom_narrative: auto-approving HITL gate (confidence ≤ 0.7) …
 INFO  converge_core::engine: HITL gate approved, promoting proposal
-INFO  fathom_sparc: engine finished cycles=2 converged=true gated=1
+INFO  fathom_narrative: engine finished cycles=2 converged=true gated=1
 ```
 
 Tests: 22 passing (5 drift unit + 6 language unit + 7 invariant unit + 2
@@ -459,10 +473,10 @@ foundation `PortfolioSuggestor` from `converge-optimization` solves the
 0-1 knapsack with provable optimality.
 
 ```text
-$ fathom-sparc portfolio --budget=50
+$ fathom-narrative portfolio --budget=50
 [
   {
-    "request_id": "fathom-sparc:portfolio:risk-coverage",
+    "request_id": "fathom-narrative:portfolio:risk-coverage",
     "selected": ["0000320193::FY2025", "0000789019::FY2025"],
     "total_value": 93,
     "total_weight": 47,
@@ -485,7 +499,7 @@ the same drift signals. With `--features=ferrox-mip`, the CLI registers
 registration order.
 
 ```text
-$ cargo run --features=fathom-sparc-cli/ferrox-mip --bin fathom-sparc -- portfolio --budget=50
+$ cargo run --features=fathom-narrative-cli/ferrox-mip --bin fathom-narrative -- portfolio --budget=50
 
 {
   "portfolio_selections": [{
@@ -495,7 +509,7 @@ $ cargo run --features=fathom-sparc-cli/ferrox-mip --bin fathom-sparc -- portfol
     "utilization": 0.94
   }],
   "mip_plans": [{
-    "request_id": "fathom-sparc:portfolio:risk-coverage",
+    "request_id": "fathom-narrative:portfolio:risk-coverage",
     "status": "optimal",
     "values": [
       ["x_0000320193_FY2025", 1.0],
@@ -515,7 +529,7 @@ branch-and-cut), one provably-optimal answer — and the integration test
 is the multi-suggestor pattern from Ferrox's own README, demonstrated
 end-to-end with real Apple/MSFT/NVDA 10-K data.
 
-A `build.rs` in `fathom-sparc-cli` propagates the HiGHS rpath onto the
+A `build.rs` in `fathom-narrative-cli` propagates the HiGHS rpath onto the
 binary so contributors don't need `DYLD_LIBRARY_PATH`. Build without
 the feature: foundation DP only. Build with: both. The data shape is
 the same; the solver registration is the only diff.

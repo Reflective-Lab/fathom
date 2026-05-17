@@ -1,10 +1,10 @@
 [workspace]
 resolver = "3"
 members = [
-    "crates/fathom-sparc-core",
-    "crates/fathom-sparc-ingest",
-    "crates/fathom-sparc-suggestors",
-    "crates/fathom-sparc-cli",
+    "crates/fathom-narrative-core",
+    "crates/fathom-narrative-ingest",
+    "crates/fathom-narrative-suggestors",
+    "crates/fathom-narrative-cli",
 ]
 
 [workspace.package]
@@ -12,14 +12,14 @@ version = "1.0.0"
 edition = "2024"
 rust-version = "1.94.0"
 license = "MIT"
-repository = "https://github.com/Reflective-Lab/fathom-sparc"
+repository = "https://github.com/Reflective-Lab/fathom-narrative"
 publish = false
 
 [workspace.dependencies]
 # Internal
-fathom-sparc-core       = { path = "crates/fathom-sparc-core" }
-fathom-sparc-ingest     = { path = "crates/fathom-sparc-ingest" }
-fathom-sparc-suggestors = { path = "crates/fathom-sparc-suggestors" }
+fathom-narrative-core       = { path = "crates/fathom-narrative-core" }
+fathom-narrative-ingest     = { path = "crates/fathom-narrative-ingest" }
+fathom-narrative-suggestors = { path = "crates/fathom-narrative-suggestors" }
 
 # Converge platform — published on crates.io. Bumped to 3.8.1 (the v3.8 line)
 # alongside the Reflective-Lab platform extraction (see migration notes:
@@ -66,8 +66,8 @@ manifold = { package = "converge-manifold-adapters", git = "https://github.com/R
 # into any crate's build graph.
 #
 # CP-SAT and MIP require native builds from the sibling Ferrox checkout:
-#   cd ~/dev/extensions/ferrox-solvers && make ortools
-#   cd ~/dev/extensions/ferrox-solvers && make highs
+#   cd ~/dev/reflective/stack/mosaic-extensions/ferrox-solvers && make ortools
+#   cd ~/dev/reflective/stack/mosaic-extensions/ferrox-solvers && make highs
 # Fathom's .cargo/config.toml points FERROX_ORTOOLS_ROOT and FERROX_HIGHS_ROOT
 # at those builds for the standard local checkout layout. CI and contributors
 # using another layout must set those variables to their native build

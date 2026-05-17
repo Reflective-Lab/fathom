@@ -1,0 +1,42 @@
+[package]
+name = "fathom-narrative-ingest"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Ingestion pipeline for Fathom — SPARC: fixture loader + SEC EDGAR scraper + HuggingFace dataset reader."
+
+[features]
+# Live SEC EDGAR ingest via manifold's HttpFetchProvider + ScraperHtmlBackend.
+sec = [
+    "dep:manifold",
+    "manifold/fetch",
+    "manifold/extract",
+    "dep:tokio",
+]
+# HuggingFace dataset ingest via manifold's HuggingFaceObjectStore.
+# JSONL-shaped datasets (e.g. JanosAudran/financial-reports-sec) only
+# need the object store + serde_json; parquet-shaped datasets would add
+# `parquet` + `arrow` here in a follow-up.
+hf = [
+    "dep:manifold",
+    "manifold/object-huggingface",
+    "dep:object_store",
+    "dep:tokio",
+    "dep:futures",
+]
+
+[dependencies]
+fathom-narrative-core.workspace = true
+
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+manifold = { workspace = true, optional = true }
+
+tokio = { workspace = true, optional = true }
+object_store = { workspace = true, optional = true }
+futures = { version = "0.3", optional = true }

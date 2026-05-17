@@ -1,0 +1,62 @@
+[package]
+name = "fathom-narrative-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Fathom — SPARC CLI: assemble formations and run convergence over filings."
+
+[[bin]]
+name = "fathom-narrative"
+path = "src/main.rs"
+
+[features]
+# Ferrox MIP solver (HiGHS) registered alongside the foundation
+# PortfolioSuggestor. Requires the native HiGHS lib to be present at
+# FERROX_HIGHS_ROOT (set by .cargo/config.toml under the standard local
+# checkout layout). Build with: `cargo build --features=ferrox-mip`.
+ferrox-mip = ["dep:ferrox"]
+# Live SEC EDGAR ingest (`fathom-narrative ingest --source=sec`). Pulls
+# manifold's HttpFetchProvider + ScraperHtmlBackend through
+# fathom-narrative-ingest.
+sec-ingest = ["fathom-narrative-ingest/sec"]
+# Live HuggingFace JSONL ingest (`fathom-narrative ingest --source=hf`). Pulls
+# manifold's HuggingFaceObjectStore through fathom-narrative-ingest.
+hf-ingest = ["fathom-narrative-ingest/hf"]
+
+[dependencies]
+fathom-narrative-core.workspace = true
+fathom-narrative-ingest.workspace = true
+fathom-narrative-suggestors.workspace = true
+
+# Converge — engine + context state + types come from the kernel; pack provides
+# the Suggestor/ContextKey/Fact types the suggestors are written against.
+converge-kernel.workspace = true
+converge-pack.workspace = true
+# converge-core for FlowAction + AuthorityLevel + FlowPhase used to construct
+# the arbiter DecideRequest at the CLI boundary.
+converge-core.workspace = true
+# converge-optimization for PortfolioSuggestor (foundation pure-Rust knapsack
+# DP) and the PortfolioRequest/PortfolioSelection types we materialise.
+converge-optimization.workspace = true
+
+# arbiter — Cedar policy preflight (the *front* gate of the gate taxonomy).
+arbiter.workspace = true
+
+# Optional: Ferrox HighsMipSuggestor as a second knapsack solver registered
+# alongside the foundation PortfolioSuggestor. Pulled in only with
+# --features=ferrox-mip; pass-through enables HiGHS native linking.
+ferrox = { workspace = true, features = ["highs"], optional = true }
+
+# CLI plumbing
+clap.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+# NOTE: organism-* crates are declared in `workspace.dependencies` and pulled
+# into this crate when formation assembly lands.

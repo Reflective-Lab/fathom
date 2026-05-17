@@ -1,0 +1,37 @@
+[package]
+name = "fathom-narrative-suggestors"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Converge suggestors for Fathom — SPARC: query the lakehouse, propose facts."
+
+[dependencies]
+fathom-narrative-core.workspace = true
+
+# Converge contracts — pack for the Suggestor trait + Context, kernel for
+# the Invariant trait (re-exported from converge_core), core for `Violation`
+# (the only invariant type the kernel doesn't re-export), optimization for
+# the PortfolioRequest/PortfolioItem types our seed suggestor emits.
+converge-pack.workspace = true
+converge-kernel.workspace = true
+converge-core.workspace = true
+converge-optimization.workspace = true
+
+# Async + utilities
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+
+# NOTE: in converge-pack 3.8.1 the `kernel-authority` feature is gone — the
+# engine is the only authorised constructor of Facts. Invariant unit tests
+# now exercise the pure-data helper `check_mass_conservation()`, which
+# avoids needing to fabricate facts at all.
+
+# NOTE: lakehouse (datafusion/arrow/iceberg/iceberg-datafusion), ML (burn,
+# ndarray, polars), and Prism are declared in `workspace.dependencies` and
+# pulled in per-suggestor when needed. Keeping them out of the default build
+# graph avoids native-library link conflicts (liblzma in burn vs. xz2 in
+# datafusion) and the iceberg-datafusion 0.6 / datafusion 53 mismatch.
