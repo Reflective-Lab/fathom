@@ -16,7 +16,7 @@
 //! a louder signal than either alone.
 
 use async_trait::async_trait;
-use converge_pack::{AgentEffect, Context, ContextKey, ProposedFact, Suggestor};
+use converge_pack::{AgentEffect, Context, ContextKey, ProposedFact, Suggestor, TextPayload};
 use fathom_narrative_core::{Cik, RiskFactorSection, analytic::RiskFactorLanguageDrift};
 use std::collections::{HashMap, HashSet};
 
@@ -44,13 +44,16 @@ impl RiskFactorLanguageSuggestor {
     fn already_proposed(&self, ctx: &dyn Context) -> bool {
         ctx.get_proposals(ContextKey::Proposals)
             .iter()
-            .any(|p| p.provenance == PROVENANCE)
+            .any(|p| p.provenance.as_str() == PROVENANCE)
     }
 
     fn parse_signals(&self, ctx: &dyn Context) -> Vec<RiskFactorSection> {
         ctx.get(ContextKey::Signals)
             .iter()
-            .filter_map(|f| serde_json::from_str::<RiskFactorSection>(f.content()).ok())
+            .filter_map(|f| {
+                f.text()
+                    .and_then(|t| serde_json::from_str::<RiskFactorSection>(t).ok())
+            })
             .collect()
     }
 }
@@ -63,6 +66,10 @@ impl Suggestor for RiskFactorLanguageSuggestor {
 
     fn dependencies(&self) -> &[ContextKey] {
         &self.deps
+    }
+
+    fn provenance(&self) -> &'static str {
+        PROVENANCE
     }
 
     fn accepts(&self, ctx: &dyn Context) -> bool {
@@ -94,8 +101,13 @@ impl Suggestor for RiskFactorLanguageSuggestor {
                 // human review.
                 let confidence = drift.jaccard_similarity;
                 let content = serde_json::to_string(&drift).unwrap_or_default();
-                ProposedFact::new(ContextKey::Proposals, id, content, PROVENANCE)
-                    .with_confidence(confidence)
+                ProposedFact::new(
+                    ContextKey::Proposals,
+                    id,
+                    TextPayload::new(content),
+                    PROVENANCE,
+                )
+                .with_confidence(confidence)
             })
             .collect();
         AgentEffect::with_proposals(proposals)

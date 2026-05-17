@@ -16,7 +16,7 @@
 //! provenance string already exists in `ContextKey::Proposals`.
 
 use async_trait::async_trait;
-use converge_pack::{AgentEffect, Context, ContextKey, ProposedFact, Suggestor};
+use converge_pack::{AgentEffect, Context, ContextKey, ProposedFact, Suggestor, TextPayload};
 use fathom_narrative_core::{Cik, RiskFactorSection, analytic::RiskFactorDrift};
 use std::collections::HashMap;
 
@@ -44,13 +44,16 @@ impl RiskFactorDriftSuggestor {
     fn already_proposed(&self, ctx: &dyn Context) -> bool {
         ctx.get_proposals(ContextKey::Proposals)
             .iter()
-            .any(|p| p.provenance == PROVENANCE)
+            .any(|p| p.provenance.as_str() == PROVENANCE)
     }
 
     fn parse_signals(&self, ctx: &dyn Context) -> Vec<RiskFactorSection> {
         ctx.get(ContextKey::Signals)
             .iter()
-            .filter_map(|f| serde_json::from_str::<RiskFactorSection>(f.content()).ok())
+            .filter_map(|f| {
+                f.text()
+                    .and_then(|t| serde_json::from_str::<RiskFactorSection>(t).ok())
+            })
             .collect()
     }
 }
@@ -63,6 +66,10 @@ impl Suggestor for RiskFactorDriftSuggestor {
 
     fn dependencies(&self) -> &[ContextKey] {
         &self.deps
+    }
+
+    fn provenance(&self) -> &'static str {
+        PROVENANCE
     }
 
     fn accepts(&self, ctx: &dyn Context) -> bool {
@@ -88,7 +95,12 @@ impl Suggestor for RiskFactorDriftSuggestor {
                     drift.current.fiscal_year
                 );
                 let content = serde_json::to_string(&drift).unwrap_or_default();
-                ProposedFact::new(ContextKey::Proposals, id, content, PROVENANCE)
+                ProposedFact::new(
+                    ContextKey::Proposals,
+                    id,
+                    TextPayload::new(content),
+                    PROVENANCE,
+                )
             })
             .collect();
         AgentEffect::with_proposals(proposals)

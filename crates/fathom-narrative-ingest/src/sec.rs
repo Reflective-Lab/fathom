@@ -22,9 +22,7 @@
 //!   `locate_item_section(html, "1A", "1B")` in embassy)
 //! - The HTTP fetch + HTML extract plumbing
 
-use embassy_sec_edgar::live::{
-    self, HeadingExtractOptions, LiveError, LiveFetchOptions,
-};
+use embassy_sec_edgar::live::{self, HeadingExtractOptions, LiveError, LiveFetchOptions};
 use fathom_narrative_core::{Cik, FilingId, FormType, RiskFactorSection};
 
 #[derive(Debug, thiserror::Error)]

@@ -43,11 +43,12 @@ impl Invariant for RiskFactorMassConservationInvariant {
         let mut counts = Vec::new();
         let mut langs = Vec::new();
         for fact in ctx.get(ContextKey::Proposals) {
-            if let Ok(d) = serde_json::from_str::<RiskFactorDrift>(fact.content()) {
+            let Some(text) = fact.text() else { continue };
+            if let Ok(d) = serde_json::from_str::<RiskFactorDrift>(text) {
                 counts.push(d);
                 continue;
             }
-            if let Ok(d) = serde_json::from_str::<RiskFactorLanguageDrift>(fact.content()) {
+            if let Ok(d) = serde_json::from_str::<RiskFactorLanguageDrift>(text) {
                 langs.push(d);
             }
         }

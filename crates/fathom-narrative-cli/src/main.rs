@@ -381,15 +381,22 @@ async fn portfolio(budget: i64, fixtures_dir: &std::path::Path) -> anyhow::Resul
     // `mip_plans` is empty; with `--features=ferrox-mip`, both populate and
     // a reader can verify they agree (or notice when they disagree).
     let strategies = result.context.get(ContextKey::Strategies);
+    // PortfolioSelection rides as a typed FactPayload on 3.9.x — read it
+    // straight off the fact rather than re-parsing a JSON string.
     let portfolio_selections: Vec<PortfolioSelection> = strategies
         .iter()
         .filter(|f| f.id().as_str().starts_with("portfolio-selection:"))
-        .filter_map(|f| serde_json::from_str(f.content()).ok())
+        .filter_map(|f| f.payload::<PortfolioSelection>().cloned())
         .collect();
+    // MIP plans would arrive from the Ferrox HighsMipSuggestor when
+    // wired (`--features=ferrox-mip`). With the typed-payload contract
+    // they need a typed MipRequest emission upstream — the untyped JSON
+    // shape that portfolio_seed used to mint was deleted in the 3.9.x
+    // migration, so this filter is presently always empty.
     let mip_plans: Vec<serde_json::Value> = strategies
         .iter()
         .filter(|f| f.id().as_str().starts_with("mip-plan:"))
-        .filter_map(|f| serde_json::from_str(f.content()).ok())
+        .filter_map(|f| f.text().and_then(|t| serde_json::from_str(t).ok()))
         .collect();
 
     if portfolio_selections.is_empty() && mip_plans.is_empty() {
@@ -563,7 +570,7 @@ impl<'a> From<&'a ContextFact> for FactView<'a> {
             ContextKey::Disagreements => "Disagreements",
             ContextKey::ConsensusOutcomes => "ConsensusOutcomes",
         };
-        let raw = f.content();
+        let raw = f.text().unwrap_or("");
         let content = serde_json::from_str(raw)
             .unwrap_or_else(|_| serde_json::Value::String(raw.to_string()));
         Self {
